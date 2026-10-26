@@ -434,7 +434,7 @@ $('exportBtn').onclick = async () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   const dd = String(d.getDate()).padStart(2, '0'), mm = String(d.getMonth() + 1).padStart(2, '0');
-  a.download = `ThongKeSoLuongHocSinh_${dd}_${mm}.xlsx`;
+  a.download = `ThongKeSoLuongHocSinh_${dd}_${mm}_VnEdu.xlsx`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };
