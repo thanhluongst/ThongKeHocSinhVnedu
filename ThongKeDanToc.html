@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thống kê HS dân tộc</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #667085; --line: #d9dde5;
+    --accent: #1d5fd1; --accent-soft: #e8f0fd; --head: #eef1f6; --lv0: #fff4d6; --lv1: #f2f6fc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171c; --card: #1d2128; --text: #e6e9ef; --muted: #9aa3b2; --line: #343a45;
+      --accent: #6ea1ff; --accent-soft: #1e2b44; --head: #262b34; --lv0: #3a3220; --lv1: #222a38;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1400px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 28px 16px; text-align: center; cursor: pointer; transition: .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop b { color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  label.f { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type=text] { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); font: inherit; }
+  .campus { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) auto; gap: 8px; margin-bottom: 8px; }
+  button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .stat .v { font-size: 22px; font-weight: 700; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .warn { color: #b54708; font-size: 13px; margin-top: 8px; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; white-space: nowrap; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 4px 8px; }
+  th { background: var(--head); font-weight: 600; text-align: center; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.lv0 td { background: var(--lv0); font-weight: 700; }
+  tr.lv1 td { background: var(--lv1); font-weight: 600; }
+  td.name { min-width: 200px; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Thống kê học sinh dân tộc</h1>
+  <p class="sub">Kéo file danh sách học sinh xuất từ vnEdu vào đây. Bảng thống kê có số lượng, số nam, số nữ và tỉ lệ của từng dân tộc (không tính dân tộc Kinh và người nước ngoài). Dữ liệu chỉ xử lý trên máy bạn, không gửi đi đâu.</p>
+
+  <div class="card">
+    <div class="drop" id="drop">
+      <div><b>Chọn file</b> hoặc kéo thả file danh sách học sinh (.xls, .xlsx) vào đây</div>
+      <div class="hint" id="fileName">Chưa chọn file</div>
+      <input type="file" id="file" accept=".xls,.xlsx" class="hidden">
+    </div>
+  </div>
+
+  <div class="card">
+    <details id="cfgBox">
+      <summary>Cài đặt báo cáo</summary>
+      <div class="grid" style="margin-top:12px">
+        <div><label class="f">Đơn vị chủ quản</label><input type="text" id="cfgUnit"></div>
+        <div><label class="f">Tên trường</label><input type="text" id="cfgSchool"></div>
+        <div><label class="f">Tiêu đề</label><input type="text" id="cfgTitle"></div>
+        <div><label class="f">Dòng phụ đề</label><input type="text" id="cfgSubtitle"></div>
+      </div>
+      <h3 style="font-size:14px;margin:16px 0 4px">Cơ sở / phân hiệu</h3>
+      <p class="hint" style="margin:0 0 8px">Ghi các lớp cách nhau bằng dấu phẩy, dùng gạch ngang cho dãy lớp liên tiếp, ví dụ: <code>6A1-6A4, 7A1-7A4, 9A12</code>. Lớp không thuộc cơ sở nào sẽ được xếp vào "Chưa phân cơ sở".</p>
+      <div id="campusList"></div>
+      <div class="row" style="margin-top:4px">
+        <button id="addCampus">+ Thêm cơ sở</button>
+        <button id="resetCfg">Khôi phục mặc định</button>
+      </div>
+    </details>
+    <div class="row" style="margin-top:14px">
+      <label><input type="checkbox" id="optCampus" checked> Chia theo cơ sở / phân hiệu</label>
+      <label><input type="checkbox" id="optClass"> Chi tiết từng lớp</label>
+      <label><input type="checkbox" id="optList" checked> Kèm danh sách HS dân tộc (Excel)</label>
+      <span style="flex:1"></span>
+      <button class="primary" id="exportBtn" disabled>Xuất Excel</button>
+    </div>
+  </div>
+
+  <div id="result" class="hidden">
+    <div class="stats" id="stats"></div>
+    <div id="warn" class="warn"></div>
+    <div class="card tablewrap" style="margin-top:16px"><table id="tbl"></table></div>
+  </div>
+</main>
+
+<script>
+const DEFAULT_CFG = {
+  unit: 'ỦY BAN NHÂN DÂN XÃ NHƠN MỸ',
+  school: 'TRƯỜNG TRUNG HỌC CƠ SỞ NHƠN MỸ',
+  title: 'THỐNG KÊ HỌC SINH DÂN TỘC',
+  subtitle: 'Năm học 2026-2027',
+  campuses: [
+    { name: 'Trường Trung học cơ sở Nhơn Mỹ (Cơ sở chính)', classes: '6A1-6A4, 7A1-7A4, 8A1-8A5, 9A1-9A6' },
+    { name: 'Phân hiệu An Mỹ 1', classes: '6A5-6A6, 7A5-7A6, 8A6-8A7, 9A7-9A8' },
+    { name: 'Phân hiệu An Mỹ 2 (Điểm trường)', classes: '6A7-6A8, 7A7-7A8, 8A8-8A9, 9A9-9A10' },
+    { name: 'Phân hiệu Song Phụng', classes: '6A9-6A10, 7A9, 8A10-8A11, 9A11-9A12' },
+  ],
+};
+const STORE_KEY = 'tkdt-cfg-v1';
+const $ = id => document.getElementById(id);
+
+let cfg = loadCfg();
+let students = null; // [{lop, khoi, ma, ten, ngaySinh, gioiTinh, danToc}]
+let report = null;
+
+// ---------- Cấu hình ----------
+function loadCfg() {
+  try {
+    const s = localStorage.getItem(STORE_KEY);
+    if (s) return Object.assign(structuredClone(DEFAULT_CFG), JSON.parse(s));
+  } catch (e) {}
+  return structuredClone(DEFAULT_CFG);
+}
+function saveCfg() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(cfg)); } catch (e) {}
+}
+function renderCfg() {
+  $('cfgUnit').value = cfg.unit;
+  $('cfgSchool').value = cfg.school;
+  $('cfgTitle').value = cfg.title;
+  $('cfgSubtitle').value = cfg.subtitle;
+  const box = $('campusList');
+  box.innerHTML = '';
+  cfg.campuses.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'campus';
+    row.innerHTML = `<input type="text" placeholder="Tên cơ sở" value="${esc(c.name)}">
+      <input type="text" placeholder="Các lớp, vd: 6A1-6A4, 7A1" value="${esc(c.classes)}">
+      <button title="Xóa">✕</button>`;
+    const [nameEl, clsEl, delEl] = row.children;
+    nameEl.oninput = () => { c.name = nameEl.value; changed(); };
+    clsEl.oninput = () => { c.classes = clsEl.value; changed(); };
+    delEl.onclick = () => { cfg.campuses.splice(i, 1); renderCfg(); changed(); };
+    box.appendChild(row);
+  });
+}
+function changed() { saveCfg(); if (students) build(); }
+for (const [id, key] of [['cfgUnit', 'unit'], ['cfgSchool', 'school'], ['cfgTitle', 'title'], ['cfgSubtitle', 'subtitle']]) {
+  $(id).oninput = () => { cfg[key] = $(id).value; changed(); };
+}
+$('addCampus').onclick = () => { cfg.campuses.push({ name: '', classes: '' }); renderCfg(); };
+$('resetCfg').onclick = () => { cfg = structuredClone(DEFAULT_CFG); renderCfg(); changed(); };
+for (const id of ['optCampus', 'optClass']) $(id).onchange = () => students && build();
+
+// "6A1-6A4, 7A9" -> Set{6A1,6A2,6A3,6A4,7A9}
+function expandClasses(text) {
+  const out = new Set();
+  for (let part of String(text).split(/[,;]+/)) {
+    part = part.trim().toUpperCase().replace(/\s+/g, '');
+    if (!part) continue;
+    const m = part.match(/^(\d+[A-Z]+)(\d+)-(?:\1)?(\d+)$/);
+    if (m) {
+      const a = +m[2], b = +m[3];
+      for (let k = Math.min(a, b); k <= Math.max(a, b); k++) out.add(m[1] + k);
+    } else out.add(part);
+  }
+  return out;
+}
+
+// ---------- Đọc file ----------
+const norm = v => String(v ?? '').normalize('NFC').trim();
+const key = v => norm(v).toLowerCase().replace(/\s+/g, ' ');
+
+function parseWorkbook(buf) {
+  const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+  for (const sn of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false });
+    const h = rows.findIndex(r => r.some(c => key(c) === 'họ và tên') && r.some(c => key(c) === 'dân tộc'));
+    if (h < 0) continue;
+    const head = rows[h].map(key);
+    const col = (...names) => head.findIndex(c => names.includes(c));
+    const c = {
+      lop: col('lớp học', 'lớp'), ma: col('mã học sinh'), ten: col('họ và tên'),
+      ns: col('ngày sinh'), gt: col('giới tính'), dt: col('dân tộc'),
+    };
+    if (c.lop < 0 || c.gt < 0) throw new Error('Không tìm thấy cột "Lớp học" hoặc "Giới tính" trong file.');
+    const list = [];
+    for (let r = h + 1; r < rows.length; r++) {
+      const row = rows[r];
+      const ten = norm(row[c.ten]), lop = norm(row[c.lop]).toUpperCase();
+      if (!ten || !lop) continue;
+      list.push({
+        lop, khoi: (lop.match(/^\d+/) || ['?'])[0],
+        ma: c.ma >= 0 ? norm(row[c.ma]) : '', ten,
+        ngaySinh: c.ns >= 0 ? norm(row[c.ns]) : '',
+        gioiTinh: norm(row[c.gt]), danToc: norm(row[c.dt]),
+      });
+    }
+    return list;
+  }
+  throw new Error('Không tìm thấy bảng danh sách học sinh (cần có cột "Họ và tên" và "Dân tộc").');
+}
+
+async function loadFile(f) {
+  $('fileName').textContent = f.name;
+  try {
+    students = parseWorkbook(new Uint8Array(await f.arrayBuffer()));
+    build();
+  } catch (e) {
+    students = null;
+    $('result').classList.add('hidden');
+    $('exportBtn').disabled = true;
+    alert('Không đọc được file: ' + e.message);
+  }
+}
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+$('file').onchange = e => e.target.files[0] && loadFile(e.target.files[0]);
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]); };
+
+// ---------- Thống kê ----------
+// Như vnEdu: không tính Kinh và "Người nước ngoài" là học sinh dân tộc
+const EXCLUDED = ['kinh', 'người nước ngoài'];
+const isKinh = s => EXCLUDED.includes(key(s.danToc));
+const isNu = s => key(s.gioiTinh) === 'nữ';
+const classSort = (a, b) => a.localeCompare(b, 'vi', { numeric: true });
+
+function stat(list, ethnicities) {
+  const dt = list.filter(s => !isKinh(s) && s.danToc);
+  const cell = arr => ({ sl: arr.length, nam: arr.filter(s => !isNu(s)).length, nu: arr.filter(isNu).length });
+  return {
+    total: list.length,
+    all: cell(dt),
+    eth: ethnicities.map(e => cell(dt.filter(s => s.danToc === e))),
+  };
+}
+
+function build() {
+  const byCount = {};
+  for (const s of students) if (s.danToc && !isKinh(s)) byCount[s.danToc] = (byCount[s.danToc] || 0) + 1;
+  const ethnicities = Object.keys(byCount).sort((a, b) => byCount[b] - byCount[a] || a.localeCompare(b, 'vi'));
+
+  const useCampus = $('optCampus').checked, useClass = $('optClass').checked;
+  const campusOf = {};
+  const campuses = cfg.campuses.filter(c => norm(c.name)).map(c => ({ name: norm(c.name), set: expandClasses(c.classes) }));
+  for (const s of students) campusOf[s.lop] = (campuses.find(c => c.set.has(s.lop)) || { name: 'Chưa phân cơ sở' }).name;
+
+  const rows = [];
+  const add = (label, level, list) => rows.push({ label, level, ...stat(list, ethnicities) });
+  const khoiList = list => [...new Set(list.map(s => s.khoi))].sort(classSort);
+  const addKhoi = (list, level) => {
+    for (const k of khoiList(list)) {
+      const lk = list.filter(s => s.khoi === k);
+      add('Khối ' + k, level, lk);
+      if (useClass) for (const l of [...new Set(lk.map(s => s.lop))].sort(classSort)) add('Lớp ' + l, level + 1, lk.filter(s => s.lop === l));
+    }
+  };
+
+  add('Toàn trường', 0, students);
+  if (useCampus) {
+    for (const k of khoiList(students)) add('Khối ' + k, 1, students.filter(s => s.khoi === k));
+    const names = [...campuses.map(c => c.name), 'Chưa phân cơ sở'];
+    for (const n of names) {
+      const lc = students.filter(s => campusOf[s.lop] === n);
+      if (!lc.length) continue;
+      add(n, 1, lc);
+      addKhoi(lc, 2);
+    }
+  } else addKhoi(students, 1);
+
+  const missing = students.filter(s => !s.danToc).length;
+  const unassigned = useCampus ? [...new Set(students.filter(s => campusOf[s.lop] === 'Chưa phân cơ sở').map(s => s.lop))].sort(classSort) : [];
+  report = { ethnicities, rows, missing, unassigned, campusOf };
+  render();
+}
+
+const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 : 0;
+const fmtPct = v => v ? v.toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '';
+const blank = v => v || '';
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+function render() {
+  const { ethnicities, rows, missing, unassigned } = report;
+  const top = rows[0];
+  $('stats').innerHTML = [
+    ['Tổng số học sinh', top.total],
+    ['HS dân tộc (không tính Kinh)', `${top.all.sl} <span class="k">(${fmtPct(pct(top.all.sl, top.total)) || 0}%)</span>`],
+    ['Nam / Nữ dân tộc', `${top.all.nam} / ${top.all.nu}`],
+    ['Số dân tộc', ethnicities.length],
+  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+
+  const warns = [];
+  if (missing) warns.push(`Có ${missing} học sinh chưa nhập dân tộc (không được tính).`);
+  if (unassigned.length) warns.push(`Các lớp chưa gán cơ sở: ${unassigned.join(', ')}.`);
+  $('warn').textContent = warns.join(' ');
+
+  const groups = ['Tổng HS dân tộc', ...ethnicities];
+  let h = `<thead><tr><th rowspan="2">STT</th><th rowspan="2">Đơn vị</th><th rowspan="2">Tổng số HS</th>`;
+  h += groups.map(g => `<th colspan="4">${esc(g)}</th>`).join('') + '</tr><tr>';
+  h += groups.map(() => '<th>SL</th><th>Nam</th><th>Nữ</th><th>TL(%)</th>').join('') + '</tr></thead><tbody>';
+  rows.forEach((r, i) => {
+    const cells = [r.all, ...r.eth].map(c =>
+      `<td class="n">${blank(c.sl)}</td><td class="n">${blank(c.nam)}</td><td class="n">${blank(c.nu)}</td><td class="n">${fmtPct(pct(c.sl, r.total))}</td>`).join('');
+    h += `<tr class="lv${Math.min(r.level, 2)}"><td class="n">${i + 1}</td><td class="name" style="padding-left:${8 + r.level * 16}px">${esc(r.label)}</td><td class="n">${r.total}</td>${cells}</tr>`;
+  });
+  $('tbl').innerHTML = h + '</tbody>';
+  $('result').classList.remove('hidden');
+  $('exportBtn').disabled = false;
+}
+
+// ---------- Xuất Excel ----------
+$('exportBtn').onclick = async () => {
+  const { ethnicities, rows, campusOf } = report;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Thống kê dân tộc', { views: [{ state: 'frozen', xSplit: 3, ySplit: 7 }],
+    pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+  const groups = ['Tổng HS dân tộc', ...ethnicities];
+  const nCols = 3 + groups.length * 4;
+  const thin = { style: 'thin' }, border = { top: thin, left: thin, bottom: thin, right: thin };
+  const font = (o = {}) => ({ name: 'Times New Roman', size: 12, ...o });
+
+  ws.columns = [{ width: 6 }, { width: 40 }, { width: 10 }, ...groups.flatMap(() => [{ width: 7 }, { width: 7 }, { width: 7 }, { width: 8 }])];
+  const line = (r, c1, c2, text, f) => {
+    ws.mergeCells(r, c1, r, c2);
+    const cell = ws.getCell(r, c1);
+    cell.value = text; cell.font = font(f); cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  };
+  line(1, 1, 3, cfg.unit, {});
+  line(2, 1, 3, cfg.school, { bold: true });
+  line(1, 4, nCols, 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM', { bold: true });
+  line(2, 4, nCols, 'Độc lập - Tự do - Hạnh phúc', { bold: true });
+  line(4, 1, nCols, cfg.title, { bold: true, size: 14 });
+  line(5, 1, nCols, cfg.subtitle, { italic: true });
+
+  // Tiêu đề bảng 2 dòng
+  const H1 = 6, H2 = 7;
+  ['STT', 'Đơn vị', 'Tổng số HS'].forEach((t, i) => { ws.mergeCells(H1, i + 1, H2, i + 1); ws.getCell(H1, i + 1).value = t; });
+  groups.forEach((g, gi) => {
+    const c = 4 + gi * 4;
+    ws.mergeCells(H1, c, H1, c + 3);
+    ws.getCell(H1, c).value = g;
+    ['SL', 'Nam', 'Nữ', 'TL(%)'].forEach((t, k) => ws.getCell(H2, c + k).value = t);
+  });
+  for (const r of [H1, H2]) for (let c = 1; c <= nCols; c++) {
+    const cell = ws.getCell(r, c);
+    cell.font = font({ bold: true }); cell.border = border;
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } };
+  }
+  ws.getRow(H1).height = 32;
+
+  rows.forEach((r, i) => {
+    const vals = [i + 1, '  '.repeat(r.level) + r.label, r.total];
+    for (const c of [r.all, ...r.eth]) vals.push(c.sl || null, c.nam || null, c.nu || null, c.sl ? pct(c.sl, r.total) : null);
+    const row = ws.addRow(vals);
+    row.eachCell({ includeEmpty: true }, (cell, c) => {
+      if (c > nCols) return;
+      cell.border = border;
+      cell.font = font({ bold: r.level <= 1 });
+      if (c >= 4 && (c - 4) % 4 === 3) cell.numFmt = '0.0';
+      cell.alignment = { horizontal: c === 2 ? 'left' : 'center', vertical: 'middle' };
+      if (r.level === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+    });
+  });
+
+  // Chữ ký
+  const d = new Date();
+  const fr = ws.rowCount + 2;
+  const sigFrom = Math.max(4, nCols - 7);
+  line(fr, sigFrom, nCols, `Nhơn Mỹ, ngày ${d.getDate()} tháng ${d.getMonth() + 1} năm ${d.getFullYear()}`, { italic: true });
+  line(fr + 1, 1, 3, 'NGƯỜI LẬP BIỂU', { bold: true });
+  line(fr + 1, sigFrom, nCols, 'HIỆU TRƯỞNG', { bold: true });
+
+  if ($('optList').checked) {
+    const ls = wb.addWorksheet('Danh sách HS dân tộc', { views: [{ state: 'frozen', ySplit: 1 }] });
+    ls.columns = [
+      { header: 'STT', width: 6 }, { header: 'Lớp', width: 8 }, { header: 'Mã học sinh', width: 14 },
+      { header: 'Họ và tên', width: 28 }, { header: 'Ngày sinh', width: 12 }, { header: 'Giới tính', width: 10 },
+      { header: 'Dân tộc', width: 16 }, { header: 'Cơ sở', width: 40 },
+    ];
+    const dt = students.filter(s => s.danToc && !isKinh(s))
+      .sort((a, b) => ethnicities.indexOf(a.danToc) - ethnicities.indexOf(b.danToc) || classSort(a.lop, b.lop) || a.ten.localeCompare(b.ten, 'vi'));
+    dt.forEach((s, i) => ls.addRow([i + 1, s.lop, s.ma, s.ten, s.ngaySinh, s.gioiTinh, s.danToc, $('optCampus').checked ? campusOf[s.lop] : '']));
+    ls.eachRow((row, rn) => row.eachCell({ includeEmpty: true }, cell => {
+      cell.border = border; cell.font = font({ bold: rn === 1 });
+      if (rn === 1) { cell.alignment = { horizontal: 'center' }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } }; }
+    }));
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const dd = String(d.getDate()).padStart(2, '0'), mm = String(d.getMonth() + 1).padStart(2, '0');
+  a.download = `ThongKeHocSinhDanToc_${dd}_${mm}.xlsx`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+
+renderCfg();
+</script>
+</body>
+</html>

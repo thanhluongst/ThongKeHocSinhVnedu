@@ -1,0 +1,4 @@
+# Không đưa dữ liệu học sinh lên GitHub
+*.xls
+*.xlsx
+*.csv
