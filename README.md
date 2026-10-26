@@ -13,7 +13,7 @@ Trang web một file (`ThongKeDanToc.html`) dùng để thống kê học sinh d
 2. Mở `ThongKeDanToc.html` bằng Chrome hoặc Edge (cần có mạng để tải thư viện đọc/ghi Excel).
 3. Kéo thả file vừa xuất vào trang, xem bảng thống kê, bấm **Xuất Excel**.
 
-Nếu bật GitHub Pages cho kho này, có thể dùng trực tiếp tại `https://<tên-tài-khoản>.github.io/<tên-kho>/ThongKeDanToc.html`.
+Dùng trực tiếp trên web: **https://thanhluongst.github.io/ThongKeHocSinhVnedu/**
 
 ## Cài đặt
 
