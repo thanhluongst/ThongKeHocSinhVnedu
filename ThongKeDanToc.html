@@ -85,6 +85,7 @@
     <div class="row" style="margin-top:14px">
       <label><input type="checkbox" id="optCampus" checked> Chia theo cơ sở / phân hiệu</label>
       <label><input type="checkbox" id="optClass"> Chi tiết từng lớp</label>
+      <label><input type="checkbox" id="optNam"> Hiện cột Nam</label>
       <label><input type="checkbox" id="optList" checked> Kèm danh sách HS dân tộc, khuyết tật, chính sách (Excel)</label>
       <span style="flex:1"></span>
       <button class="primary" id="exportBtn" disabled>Xuất Excel</button>
@@ -155,7 +156,7 @@ for (const [id, key] of [['cfgUnit', 'unit'], ['cfgSchool', 'school'], ['cfgTitl
 }
 $('addCampus').onclick = () => { cfg.campuses.push({ name: '', classes: '' }); renderCfg(); };
 $('resetCfg').onclick = () => { cfg = structuredClone(DEFAULT_CFG); renderCfg(); changed(); };
-for (const id of ['optCampus', 'optClass']) $(id).onchange = () => students && build();
+for (const id of ['optCampus', 'optClass', 'optNam']) $(id).onchange = () => students && build();
 
 // "6A1-6A4, 7A9" -> Set{6A1,6A2,6A3,6A4,7A9}
 function expandClasses(text) {
@@ -257,10 +258,10 @@ function stat(list, ethnicities) {
 }
 
 // Các nhóm cột của bảng, theo thứ tự trong mẫu vnEdu; phần dân tộc tách chi tiết từng dân tộc
-function columns(ethnicities) {
+function columns(ethnicities, showNam) {
   const sub = (label, get, isPct = false) => ({ label, get, isPct });
   const tl = f => sub('TL(%)', r => pct(f(r), r.total), true);
-  const detail = f => [sub('SL', r => f(r).sl), sub('Nam', r => f(r).nam), sub('Nữ', r => f(r).nu), tl(r => f(r).sl)];
+  const detail = f => [sub('SL', r => f(r).sl), ...(showNam ? [sub('Nam', r => f(r).nam)] : []), sub('Nữ', r => f(r).nu), tl(r => f(r).sl)];
   return [
     { title: 'Nữ', subs: [sub('SL', r => r.nu), tl(r => r.nu)] },
     { title: 'Dân tộc', subs: detail(r => r.dt) },
@@ -306,7 +307,7 @@ function build() {
 
   const missing = students.filter(s => !s.danToc).length;
   const unassigned = useCampus ? [...new Set(students.filter(s => campusOf[s.lop] === 'Chưa phân cơ sở').map(s => s.lop))].sort(classSort) : [];
-  report = { ethnicities, cols: columns(ethnicities), rows, missing, unassigned, campusOf };
+  report = { ethnicities, cols: columns(ethnicities, $('optNam').checked), rows, missing, unassigned, campusOf };
   render();
 }
 
@@ -323,7 +324,7 @@ function render() {
     ['Tổng số học sinh', top.total],
     ['Nữ', withPct(top.nu, top.total)],
     ['HS dân tộc (không tính Kinh)', withPct(top.dt.sl, top.total)],
-    ['Nam / Nữ dân tộc', `${top.dt.nam} / ${top.dt.nu}`],
+    $('optNam').checked ? ['Nam / Nữ dân tộc', `${top.dt.nam} / ${top.dt.nu}`] : ['Nữ dân tộc', withPct(top.dt.nu, top.total)],
     ['Khuyết tật', withPct(top.kt, top.total)],
     ['Diện chính sách', withPct(top.cs, top.total)],
   ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
