@@ -203,7 +203,15 @@ function parseWorkbook(buf) {
     }
     return list;
   }
-  throw new Error('Không tìm thấy bảng danh sách học sinh (cần có cột "Họ và tên" và "Dân tộc").');
+  // Không đúng loại file: cho biết file đang có những cột nào để người dùng nhận ra
+  let found = '';
+  for (const sn of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false });
+    const head = rows.find(r => r.filter(c => norm(c)).length >= 4);
+    if (head) { found = `\n\nFile này (sheet "${sn}") có các cột: ${[...new Set(head.map(norm).filter(Boolean))].slice(0, 12).join(', ')}…`; break; }
+  }
+  throw new Error('Đây không phải file danh sách học sinh có cột "Dân tộc".\n'
+    + 'Hãy dùng file danh sách học sinh toàn trường xuất từ vnEdu (file có các cột Lớp học, Họ và tên, Giới tính, Dân tộc…), không dùng file báo cáo thống kê.' + found);
 }
 
 async function loadFile(f) {
