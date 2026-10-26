@@ -1,10 +1,12 @@
-# Thống kê học sinh dân tộc từ vnEdu
+# Thống kê số lượng học sinh từ vnEdu
 
-Trang web một file (`ThongKeDanToc.html`) dùng để thống kê học sinh dân tộc từ file **danh sách học sinh** xuất từ vnEdu.
+Trang web một file (`ThongKeDanToc.html`) lập bảng **thống kê số lượng học sinh** theo mẫu vnEdu từ file **danh sách học sinh** xuất từ vnEdu.
 
-- Thống kê từng dân tộc: số lượng, nam, nữ, tỉ lệ (%). Không tính dân tộc Kinh và "Người nước ngoài" (giống cách tính của vnEdu).
+- Các cột: Tổng số HS, Nữ, Dân tộc, chi tiết từng dân tộc (SL, nam, nữ, tỉ lệ %), Nữ dân tộc, Khuyết tật, Diện chính sách.
+- Không tính dân tộc Kinh và "Người nước ngoài" (giống cách tính của vnEdu).
+- Chuyển đi, chuyển đến, thôi học không có trong file danh sách nên không thống kê.
 - Chia theo toàn trường, khối, cơ sở / phân hiệu; có tùy chọn chi tiết từng lớp.
-- Xuất Excel có quốc hiệu, tiêu đề, kẻ khung, chỗ ký; kèm sheet danh sách học sinh dân tộc.
+- Xuất Excel có quốc hiệu, tiêu đề, kẻ khung, chỗ ký; kèm sheet danh sách học sinh dân tộc, khuyết tật, diện chính sách để đối chiếu.
 - Dữ liệu chỉ xử lý trong trình duyệt, không gửi lên máy chủ nào.
 
 ## Cách dùng
