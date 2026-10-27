@@ -6,6 +6,7 @@ Trang web một file (`ThongKeDanToc.html`) lập bảng **thống kê số lư�
 - Không tính dân tộc Kinh và "Người nước ngoài" (giống cách tính của vnEdu).
 - Chuyển đi, chuyển đến, thôi học không có trong file danh sách nên không thống kê.
 - Chia theo toàn trường, khối, cơ sở / phân hiệu; có tùy chọn chi tiết từng lớp.
+- Xuất **danh sách học sinh từng lớp theo mẫu A4** (mỗi lớp một sheet): nơi sinh ghi theo tỉnh sau sáp nhập, chỗ ở dạng "ấp, xã", bảng thống kê theo năm sinh, dân tộc, chỗ ký; chọn lớp theo cơ sở; tùy chọn lấy lại số đăng bộ, lưu ban, bỏ học từ file A4 cũ; kèm sheet "Kiểm tra dữ liệu" (thiếu mã định danh, nơi sinh, năm sinh bất thường…).
 - Xuất Excel có quốc hiệu, tiêu đề, kẻ khung, chỗ ký; kèm sheet danh sách học sinh dân tộc, khuyết tật, diện chính sách để đối chiếu.
 - Dữ liệu chỉ xử lý trong trình duyệt, không gửi lên máy chủ nào.
 

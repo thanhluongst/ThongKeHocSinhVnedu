@@ -50,6 +50,10 @@
   details summary { cursor: pointer; font-weight: 600; }
   .hint { color: var(--muted); font-size: 12px; }
   .hidden { display: none; }
+  input[type=date], input[type=file] { width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); font: inherit; }
+  .a4cls { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 4px 10px; font-size: 13px; }
+  .a4cls label { white-space: nowrap; }
+  .a4cls .k { color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -96,6 +100,28 @@
     <div class="stats" id="stats"></div>
     <div id="warn" class="warn"></div>
     <div class="card tablewrap" style="margin-top:16px"><table id="tbl"></table></div>
+
+    <div class="card" id="a4Box">
+      <h2 style="font-size:16px;margin:0 0 4px">Danh sách học sinh từng lớp (mẫu A4)</h2>
+      <p class="hint" style="margin:0 0 12px">Mỗi lớp một sheet theo mẫu hồ sơ học sinh A4: họ tên, ngày sinh, dân tộc, nơi sinh (tỉnh sau sáp nhập), chỗ ở, cha mẹ, số đăng bộ, mã định danh, kèm bảng thống kê theo năm sinh, dân tộc và sheet kiểm tra dữ liệu.</p>
+      <div class="grid">
+        <div><label class="f">Năm học</label><input type="text" id="a4Year"></div>
+        <div><label class="f">Ngày ký</label><input type="date" id="a4Date"></div>
+        <div><label class="f">File A4 cũ (tùy chọn): lấy lại số đăng bộ, lưu ban, bỏ học</label>
+          <input type="file" id="a4Old" accept=".xlsx,.xls"></div>
+      </div>
+      <div class="row" style="margin:14px 0 6px">
+        <b style="font-size:13px">Chọn lớp</b>
+        <button id="a4All">Tất cả</button><button id="a4None">Bỏ chọn</button>
+        <span id="a4Campus" class="row" style="gap:6px"></span>
+      </div>
+      <div id="a4Classes" class="a4cls"></div>
+      <div class="row" style="margin-top:12px">
+        <span class="hint" id="a4Info"></span>
+        <span style="flex:1"></span>
+        <button class="primary" id="a4Btn">Xuất mẫu A4</button>
+      </div>
+    </div>
   </div>
 </main>
 
@@ -188,19 +214,34 @@ function parseWorkbook(buf) {
     const c = {
       lop: col('lớp học', 'lớp'), ma: col('mã học sinh'), ten: col('họ và tên'),
       ns: col('ngày sinh'), gt: col('giới tính'), dt: col('dân tộc'), kt: col('khuyết tật'), cs: col('diện chính sách'),
+      sdb: col('sổ đăng bộ'), cccd: col('căn cước', 'mã định danh', 'số cccd'),
+      cha: col('tên cha', 'họ tên cha'), me: col('tên mẹ', 'họ tên mẹ'),
     };
     if (c.lop < 0 || c.gt < 0) throw new Error('Không tìm thấy cột "Lớp học" hoặc "Giới tính" trong file.');
+    // "Chỗ ở hiện nay", "Nơi sinh" là nhóm cột, tên cột con nằm ở dòng dưới tiêu đề
+    const sub = (rows[h + 1] || []).map(key);
+    const group = (name, parts) => {
+      const i = col(name), o = {};
+      if (i >= 0) parts.forEach((p, k) => { if (sub[i + k] && sub[i + k].includes(p[1])) o[p[0]] = i + k; });
+      return o;
+    };
+    const choO = group('chỗ ở hiện nay', [['xom', 'xóm'], ['kdc', 'khu dân cư'], ['xa', 'xã'], ['tinh', 'tỉnh']]);
+    const nSinh = group('nơi sinh', [['nsTT', 'nơi sinh'], ['nsXa', 'xã'], ['nsTinh', 'tỉnh']]);
     const list = [];
     for (let r = h + 1; r < rows.length; r++) {
       const row = rows[r];
       const ten = norm(row[c.ten]), lop = norm(row[c.lop]).toUpperCase();
       if (!ten || !lop) continue;
+      const g = i => i >= 0 ? norm(row[i]).replace(/\s+/g, ' ') : '';
       list.push({
         lop, khoi: (lop.match(/^\d+/) || ['?'])[0],
         ma: c.ma >= 0 ? norm(row[c.ma]) : '', ten,
         ngaySinh: c.ns >= 0 ? norm(row[c.ns]) : '',
         gioiTinh: norm(row[c.gt]), danToc: norm(row[c.dt]),
         khuyetTat: c.kt >= 0 ? norm(row[c.kt]) : '', chinhSach: c.cs >= 0 ? norm(row[c.cs]) : '',
+        sdb: g(c.sdb), cccd: g(c.cccd).replace(/\D/g, ''), cha: g(c.cha), me: g(c.me),
+        xom: g(choO.xom ?? -1), kdc: g(choO.kdc ?? -1), xa: g(choO.xa ?? -1), tinh: g(choO.tinh ?? -1),
+        nsTT: g(nSinh.nsTT ?? -1), nsTinh: g(nSinh.nsTinh ?? -1),
       });
     }
     return list;
@@ -221,6 +262,7 @@ async function loadFile(f) {
   try {
     students = parseWorkbook(new Uint8Array(await f.arrayBuffer()));
     build();
+    renderA4Classes();
   } catch (e) {
     students = null;
     $('result').classList.add('hidden');
@@ -438,6 +480,303 @@ $('exportBtn').onclick = async () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };
+
+// ---------- Danh sách lớp mẫu A4 ----------
+// Tỉnh sau sáp nhập 2025: tỉnh mới -> tên tỉnh cũ, huyện cũ (viết không dấu) có thể gặp trong "Thông tin nơi sinh"
+const TINH_MOI = {
+  'Hà Nội': ['ha noi'], 'Huế': ['thua thien hue', 'hue'], 'Lai Châu': ['lai chau'], 'Điện Biên': ['dien bien'],
+  'Sơn La': ['son la'], 'Lạng Sơn': ['lang son'], 'Quảng Ninh': ['quang ninh'], 'Thanh Hóa': ['thanh hoa'],
+  'Nghệ An': ['nghe an'], 'Hà Tĩnh': ['ha tinh'], 'Cao Bằng': ['cao bang'],
+  'Tuyên Quang': ['tuyen quang', 'ha giang'], 'Lào Cai': ['lao cai', 'yen bai'],
+  'Thái Nguyên': ['thai nguyen', 'bac kan', 'bac can'], 'Phú Thọ': ['phu tho', 'vinh phuc', 'hoa binh'],
+  'Bắc Ninh': ['bac ninh', 'bac giang'], 'Hưng Yên': ['hung yen', 'thai binh'], 'Hải Phòng': ['hai phong', 'hai duong'],
+  'Ninh Bình': ['ninh binh', 'ha nam', 'nam dinh'], 'Quảng Trị': ['quang tri', 'quang binh'],
+  'Đà Nẵng': ['da nang', 'quang nam'], 'Quảng Ngãi': ['quang ngai', 'kon tum'], 'Gia Lai': ['gia lai', 'binh dinh'],
+  'Khánh Hòa': ['khanh hoa', 'ninh thuan'], 'Lâm Đồng': ['lam dong', 'dak nong', 'dac nong', 'binh thuan'],
+  'Đắk Lắk': ['dak lak', 'dac lac', 'phu yen'],
+  'Hồ Chí Minh': ['ho chi minh', 'tp hcm', 'tphcm', 'sai gon', 'binh duong', 'ba ria', 'vung tau', 'thu duc',
+    'quan 1', 'quan 3', 'quan 4', 'quan 5', 'quan 6', 'quan 7', 'quan 8', 'quan 10', 'quan 11', 'quan 12',
+    'binh thanh', 'go vap', 'tan binh', 'tan phu', 'binh tan', 'hoc mon', 'cu chi', 'binh chanh', 'nha be', 'phu nhuan'],
+  'Đồng Nai': ['dong nai', 'binh phuoc', 'bien hoa'], 'Tây Ninh': ['tay ninh', 'long an'],
+  'Cần Thơ': ['can tho', 'soc trang', 'hau giang', 'ke sach', 'cu lao dung', 'long phu', 'my tu', 'my xuyen',
+    'nga nam', 'vinh chau', 'tran de', 'thanh tri', 'phong dien', 'ninh kieu', 'cai rang', 'o mon', 'thot not',
+    'binh thuy', 'vi thanh', 'nga bay', 'phung hiep', 'co do', 'vinh thanh'],
+  'Vĩnh Long': ['vinh long', 'ben tre', 'tra vinh'], 'Đồng Tháp': ['dong thap', 'tien giang', 'my tho'],
+  'Cà Mau': ['ca mau', 'bac lieu'], 'An Giang': ['an giang', 'kien giang', 'rach gia', 'phu quoc'],
+};
+// 3 số đầu mã định danh (tỉnh đăng ký khai sinh) -> tỉnh mới
+const MA_TINH = Object.fromEntries(Object.entries({
+  'Hà Nội': '001', 'Tuyên Quang': '002 008', 'Cao Bằng': '004', 'Thái Nguyên': '006 019', 'Lào Cai': '010 015',
+  'Điện Biên': '011', 'Lai Châu': '012', 'Sơn La': '014', 'Phú Thọ': '017 025 026', 'Lạng Sơn': '020',
+  'Quảng Ninh': '022', 'Bắc Ninh': '024 027', 'Hải Phòng': '030 031', 'Hưng Yên': '033 034',
+  'Ninh Bình': '035 036 037', 'Thanh Hóa': '038', 'Nghệ An': '040', 'Hà Tĩnh': '042', 'Quảng Trị': '044 045',
+  'Huế': '046', 'Đà Nẵng': '048 049', 'Quảng Ngãi': '051 062', 'Gia Lai': '052 064', 'Đắk Lắk': '054 066',
+  'Khánh Hòa': '056 058', 'Lâm Đồng': '060 067 068', 'Đồng Nai': '070 075', 'Tây Ninh': '072 080',
+  'Hồ Chí Minh': '074 077 079', 'Đồng Tháp': '082 087', 'Vĩnh Long': '083 084 086', 'An Giang': '089 091',
+  'Cần Thơ': '092 093 094', 'Cà Mau': '095 096',
+}).flatMap(([t, ms]) => ms.split(' ').map(m => [m, t])));
+const TINH_NHA = 'Cần Thơ'; // tỉnh của trường: không ghi tỉnh vào "Chỗ ở" nếu trùng
+
+const khongDau = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+// Tìm tỉnh (tên mới) trong chuỗi tự do; lấy tên xuất hiện sau cùng ("BV Kế Sách, Sóc Trăng" -> Cần Thơ)
+function timTinh(text) {
+  const t = ' ' + khongDau(text) + ' ';
+  let tot = '', viTri = -1;
+  for (const [tinh, ds] of Object.entries(TINH_MOI)) for (const k of ds) {
+    const p = t.lastIndexOf(' ' + k + ' ');
+    if (p > viTri) { tot = tinh; viTri = p; }
+  }
+  return tot;
+}
+function noiSinhA4(s) {
+  if (s.nsTinh) return timTinh(s.nsTinh) || s.nsTinh.replace(/^(TP\.?|Thành phố|Tỉnh)\s*/i, '');
+  return timTinh(s.nsTT) || (s.cccd.length === 12 ? MA_TINH[s.cccd.slice(0, 3)] || '' : '');
+}
+function tenAp(s, xa) {
+  let v = s.kdc || s.xom;
+  if (!v) return '';
+  const m = v.match(/(?:^|\s)(?:ấp|âp)\s+(.+)/i);
+  v = m ? m[1] : v.replace(/^[\w/]*\d[\w/]*[\s,.-]+/, ''); // bỏ số nhà ở đầu: "1097/11 Phụng An"
+  v = v.split(',')[0].replace(/^[\s.-]+|[\s.-]+$/g, '');
+  if (!v || /^(xã|phường|thị trấn)\b/i.test(v) || khongDau(v) === khongDau(xa)) return '';
+  return v.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+function choOA4(s) {
+  const xa = s.xa.replace(/^xã\s+/i, '');
+  const phan = [tenAp(s, xa), xa];
+  if (s.tinh && timTinh(s.tinh) !== TINH_NHA) phan.push(s.tinh);
+  return phan.filter(Boolean).join(', ');
+}
+function doiTuongA4(s) {
+  const k = khongDau(s.chinhSach), out = [];
+  if (/liet s[yi]/.test(k)) out.push('Con LS');
+  if (/thuong binh|benh binh/.test(k)) out.push('Con TB');
+  if (isKhuyetTat(s)) out.push('KT');
+  return out.join(', ');
+}
+function ngaySinhA4(v) {
+  const m = String(v).match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  return m ? `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}/${m[3]}` : String(v);
+}
+const isKhmer = s => ['khome', 'khmer'].includes(khongDau(s.danToc).replace(/ /g, ''));
+const isDtKhac = s => isDanToc(s) && !isKhmer(s);
+const namDau = () => +((($('a4Year').value || '').match(/\d{4}/) || [new Date().getFullYear()])[0]);
+
+function defaultYear() {
+  const m = cfg.subtitle.match(/\d{4}\s*-\s*\d{4}/);
+  if (m) return m[0].replace(/\s/g, '');
+  const d = new Date(), y = d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1;
+  return `${y}-${y + 1}`;
+}
+function renderA4Classes() {
+  if (!$('a4Year').value) $('a4Year').value = defaultYear();
+  if (!$('a4Date').value) $('a4Date').value = new Date().toISOString().slice(0, 10);
+  const lops = [...new Set(students.map(s => s.lop))].sort(classSort);
+  $('a4Classes').innerHTML = lops.map(l => `<label><input type="checkbox" value="${esc(l)}" checked> ${esc(l)}
+    <span class="k">(${students.filter(s => s.lop === l).length})</span></label>`).join('');
+  const camp = cfg.campuses.filter(c => norm(c.name));
+  $('a4Campus').innerHTML = camp.map((c, i) => `<button data-i="${i}" title="Chỉ chọn lớp của ${esc(c.name)}">${esc(c.name.replace(/\s*\(.*\)$/, ''))}</button>`).join('');
+  $('a4Campus').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const set = expandClasses(camp[+b.dataset.i].classes);
+    a4Boxes().forEach(x => x.checked = set.has(x.value));
+    a4Info();
+  });
+  a4Boxes().forEach(x => x.onchange = a4Info);
+  a4Info();
+}
+const a4Boxes = () => [...$('a4Classes').querySelectorAll('input')];
+function a4Info() {
+  const chon = new Set(a4Boxes().filter(x => x.checked).map(x => x.value));
+  $('a4Info').textContent = `Đã chọn ${chon.size} lớp, ${students.filter(s => chon.has(s.lop)).length} học sinh`;
+  $('a4Btn').disabled = !chon.size;
+}
+$('a4All').onclick = () => { a4Boxes().forEach(x => x.checked = true); a4Info(); };
+$('a4None').onclick = () => { a4Boxes().forEach(x => x.checked = false); a4Info(); };
+
+// File A4 cũ (đã nhập tay): mã định danh hoặc (họ tên, ngày sinh) -> cột J, K, L, M
+async function docFileCu(f) {
+  const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
+  const cu = new Map();
+  for (const sn of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false });
+    for (const r of rows.slice(7)) {
+      if (!/^\d+$/.test(norm(r[0])) || !norm(r[1])) continue;
+      const them = { luuBan: norm(r[9]), boHoc: norm(r[10]), doiTuong: norm(r[11]), sdb: norm(r[12]) };
+      if (!Object.values(them).some(Boolean)) continue;
+      const cccd = norm(r[13]).replace(/\D/g, '');
+      if (cccd) cu.set(cccd, them);
+      cu.set(khongDau(r[1]) + '|' + ngaySinhA4(norm(r[2])), them);
+    }
+  }
+  return cu;
+}
+
+function kiemTraA4(lop, ds) {
+  const out = [], k = +(lop.match(/^\d+/) || [0])[0], nd = namDau();
+  for (const h of ds) {
+    const loi = [];
+    if (!h.cccd) loi.push('thiếu mã định danh');
+    else if (h.cccd.length !== 12) loi.push(`mã định danh sai độ dài (${h.cccd})`);
+    if (!h.noiSinh) loi.push('thiếu nơi sinh');
+    if (!h.choO) loi.push('thiếu chỗ ở');
+    if (!h.danToc) loi.push('thiếu dân tộc');
+    if (!h.cha && !h.me) loi.push('thiếu họ tên cha, mẹ');
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(h.ns)) loi.push(`ngày sinh không hợp lệ (${h.ns})`);
+    else if (k) {
+      const lech = nd - +h.ns.slice(-4) - k; // lớp 6 năm học 2026-2027 sinh năm 2015 -> 5
+      if (lech < 5 || lech > 8) loi.push(`năm sinh bất thường (${h.ns.slice(-4)})`);
+    }
+    if (loi.length) out.push([lop, h.ten, h.ns, loi.join('; ')]);
+  }
+  return out;
+}
+
+$('a4Btn').onclick = async () => {
+  const btn = $('a4Btn');
+  btn.disabled = true; btn.textContent = 'Đang xuất…';
+  try { await xuatA4(); }
+  catch (e) { alert('Không xuất được: ' + e.message); }
+  finally { btn.textContent = 'Xuất mẫu A4'; a4Info(); }
+};
+
+async function xuatA4() {
+  const chon = a4Boxes().filter(x => x.checked).map(x => x.value);
+  const namHoc = norm($('a4Year').value) || defaultYear();
+  const [yy, mm, dd] = ($('a4Date').value || new Date().toISOString().slice(0, 10)).split('-');
+  const ngayKy = `Nhơn Mỹ, ngày ${dd} tháng ${+mm} năm ${yy}`;
+  const cu = $('a4Old').files[0] ? await docFileCu($('a4Old').files[0]) : null;
+  let soCu = 0;
+
+  const wb = new ExcelJS.Workbook();
+  wb.calcProperties.fullCalcOnLoad = true;
+  const thin = { style: 'thin' }, border = { top: thin, left: thin, bottom: thin, right: thin };
+  const font = (sz = 11, o = {}) => ({ name: 'Times New Roman', size: sz, ...o });
+  const headFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAF7' } };
+  const TIEU_DE = ['Stt', 'Họ tên học sinh', 'Ngày tháng năm sinh', 'Nam; nữ', 'Dân tộc (Kinh, Hoa, Khmer..)',
+    'Nơi sinh (ghi tỉnh)', 'Chỗ ở hiện nay (ấp, xã), (ghi xã, huyện, tỉnh nếu ngoài huyện, ngoài tỉnh).',
+    'Họ tên cha (hoặc người đở đầu)', 'Họ tên mẹ (hoặc người đở đầu)', 'Lưu ban (đánh x)',
+    'Bỏ học các năm trước ra học lại (đánh x)', 'Con LS, con TB, khuyết tật', 'Ghi chú (số vào sổ đăng bộ)',
+    'Mã định danh cá nhân'];
+  const RONG = [3.43, 22, 10.43, 5.14, 7.14, 12, 19, 18, 13, 4.57, 6.43, 5.86, 13.43, 14];
+  const CAN = ['center', 'left', 'center', 'center', 'center', 'left', 'left', 'left', 'left', 'center', 'center', 'center', 'center', 'center'];
+  const THU_NHO = [1, 5, 6, 7, 8, 13]; // cột chữ dài: thu nhỏ chữ cho vừa ô thay vì xuống dòng
+  const canhBao = [];
+
+  for (const lop of chon) {
+    const ds = students.filter(s => s.lop === lop).map(s => {
+      const h = { ten: s.ten, ns: ngaySinhA4(s.ngaySinh), gt: s.gioiTinh, danToc: s.danToc, noiSinh: noiSinhA4(s),
+        choO: choOA4(s), cha: s.cha, me: s.me, luuBan: '', boHoc: '', doiTuong: doiTuongA4(s), sdb: s.sdb,
+        cccd: s.cccd && s.cccd.length < 12 ? s.cccd.padStart(12, '0') : s.cccd, gioiTinh: s.gioiTinh, khuyetTat: s.khuyetTat };
+      const them = cu && ((h.cccd && cu.get(h.cccd)) || cu.get(khongDau(h.ten) + '|' + h.ns));
+      if (them) {
+        let doi = false;
+        for (const [k, v] of Object.entries(them)) if (v && !h[k]) { h[k] = v; doi = true; }
+        soCu += doi;
+      }
+      return h;
+    });
+    canhBao.push(...kiemTraA4(lop, ds));
+
+    const ws = wb.addWorksheet(lop.slice(0, 31), { views: [{ state: 'frozen', ySplit: 7 }],
+      pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+        horizontalCentered: true, printTitlesRow: '7:7',
+        margins: { left: 0.2, right: 0.2, top: 0.39, bottom: 0.2, header: 0, footer: 0 } } });
+    ws.columns = RONG.map(width => ({ width }));
+    const o = (r, c, v, f = font(), { can = 'center', vien = true, wrap = true, shrink = false, nen } = {}) => {
+      const cell = ws.getCell(r, c);
+      if (v !== undefined && v !== '') cell.value = v;
+      cell.font = f;
+      cell.alignment = { horizontal: can, vertical: 'middle', wrapText: wrap && !shrink, shrinkToFit: shrink };
+      if (vien) cell.border = border;
+      if (nen) cell.fill = nen;
+      return cell;
+    };
+    const tren = { vien: false, wrap: false };
+    o(1, 1, cfg.unit.replace(/^ỦY BAN NHÂN DÂN/i, 'UBND'), font(12, { bold: true }), tren); ws.mergeCells(1, 1, 1, 3);
+    o(1, 4, 'CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM', font(12, { bold: true }), tren); ws.mergeCells(1, 4, 1, 13);
+    o(2, 1, cfg.school.replace(/TRUNG HỌC CƠ SỞ/i, 'THCS'), font(12, { bold: true }), tren); ws.mergeCells(2, 1, 2, 3);
+    o(2, 4, 'Độc lập- Tự do- Hạnh phúc', font(12, { bold: true, italic: true }), tren); ws.mergeCells(2, 4, 2, 13);
+    o(4, 1, 'DANH SÁCH HỌC SINH', font(14, { bold: true }), tren); ws.mergeCells(4, 1, 4, 13);
+    o(5, 1, `Lớp: ${lop}; Năm học: ${namHoc}`, font(12, { bold: true }), tren); ws.mergeCells(5, 1, 5, 13);
+    [[1, 18.95], [2, 18.95], [3, 8.25], [4, 20.1], [5, 20.1], [6, 8.25], [7, 72]].forEach(([r, h]) => ws.getRow(r).height = h);
+    TIEU_DE.forEach((t, j) => o(7, j + 1, t, font([9, 10, 11].includes(j) ? 8 : 11, { bold: true }), { nen: headFill }));
+
+    let r = 8;
+    ds.forEach((h, i) => {
+      const vals = [i + 1, h.ten, h.ns, h.gt, h.danToc, h.noiSinh, h.choO, h.cha, h.me, h.luuBan, h.boHoc, h.doiTuong, h.sdb, h.cccd];
+      vals.forEach((v, j) => {
+        const cell = o(r, j + 1, v, font(), { can: CAN[j], shrink: THU_NHO.includes(j) });
+        if ([2, 12, 13].includes(j)) cell.numFmt = '@';
+      });
+      ws.getRow(r).height = 20.1;
+      r++;
+    });
+
+    // Dòng chấm để bổ sung tay
+    r++;
+    for (let k = 0; k < 2; k++, r++) { o(r, 2, '.'.repeat(220), font(), { can: 'left', ...tren }); ws.getRow(r).height = 18; }
+
+    // THỐNG KÊ theo năm sinh, dân tộc
+    r++;
+    o(r, 2, 'THỐNG KÊ', font(12, { bold: true }), { can: 'left', ...tren });
+    const r0 = r + 1, B = font(11, { bold: true });
+    for (let k = 0; k < 4; k++) { for (let c = 2; c <= 9; c++) o(r0 + k, c, undefined, B); ws.getRow(r0 + k).height = 18; }
+    o(r0, 2, 'Năm sinh', B); o(r0, 3, 'Thống kê theo năm sinh, dân tộc', B); o(r0, 9, 'Ghi chú', B);
+    o(r0 + 1, 3, 'Tổng số', B); o(r0 + 1, 4, 'Nữ ', B); o(r0 + 1, 5, 'Trong đó', B);
+    o(r0 + 2, 5, 'DT Khmer', B); o(r0 + 2, 7, 'DT Hoa và DT ít người khác ', B);
+    ['SL', 'Nữ', 'SL', 'Nữ'].forEach((t, k) => o(r0 + 3, 5 + k, t, B));
+    [[r0, 2, r0 + 3, 2], [r0, 3, r0, 8], [r0, 9, r0 + 3, 9], [r0 + 1, 3, r0 + 3, 3], [r0 + 1, 4, r0 + 3, 4],
+      [r0 + 1, 5, r0 + 1, 8], [r0 + 2, 5, r0 + 2, 6], [r0 + 2, 7, r0 + 2, 8]].forEach(a => ws.mergeCells(...a));
+    const nam = [...new Set(ds.map(h => h.ns.slice(-4)).filter(y => /^\d{4}$/.test(y)))].sort().reverse();
+    r = r0 + 4;
+    const dau = r, tong = [0, 0, 0, 0, 0, 0];
+    for (const y of nam) {
+      const n = ds.filter(h => h.ns.endsWith(y)), nu = n.filter(isNu);
+      const so = [n.length, nu.length, n.filter(isKhmer).length, nu.filter(isKhmer).length, n.filter(isDtKhac).length, nu.filter(isDtKhac).length];
+      o(r, 2, +y);
+      so.forEach((v, k) => { o(r, 3 + k, v || (k === 0 ? 0 : undefined)); tong[k] += v; });
+      o(r, 9); ws.getRow(r).height = 18; r++;
+    }
+    o(r, 2, 'Cộng');
+    tong.forEach((v, k) => {
+      const c = String.fromCharCode(67 + k);
+      o(r, 3 + k, r > dau ? { formula: `SUM(${c}${dau}:${c}${r - 1})`, result: v } : 0);
+    });
+    o(r, 9); ws.getRow(r).height = 18;
+
+    // Ký tên
+    r += 2;
+    o(r, 2, ngayKy, font(11, { italic: true }), tren); ws.mergeCells(r, 2, r, 6);
+    o(r, 9, ngayKy, font(11, { italic: true }), tren); ws.mergeCells(r, 9, r, 13);
+    o(r + 1, 2, 'HIỆU TRƯỞNG', B, tren); ws.mergeCells(r + 1, 2, r + 1, 6);
+    o(r + 1, 9, 'GV CHỦ NHIỆM', B, tren); ws.mergeCells(r + 1, 9, r + 1, 13);
+    ws.getRow(r).height = ws.getRow(r + 1).height = 18;
+    ws.pageSetup.printArea = `A1:N${r + 6}`;
+  }
+
+  // Sheet kiểm tra dữ liệu
+  const kt = wb.addWorksheet('Kiểm tra dữ liệu', { views: [{ state: 'frozen', ySplit: 1 }] });
+  kt.columns = [{ header: 'STT', width: 6 }, { header: 'Lớp', width: 8 }, { header: 'Họ và tên', width: 28 },
+    { header: 'Ngày sinh', width: 12 }, { header: 'Cần kiểm tra', width: 70 }];
+  canhBao.forEach((x, i) => kt.addRow([i + 1, ...x]));
+  if (!canhBao.length) kt.addRow(['', '', 'Không có cảnh báo.']);
+  kt.eachRow((row, rn) => row.eachCell({ includeEmpty: true }, cell => {
+    cell.border = border; cell.font = font(11, { bold: rn === 1 });
+    if (rn === 1) { cell.alignment = { horizontal: 'center' }; cell.fill = headFill; }
+  }));
+
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const ny = namHoc.match(/\d{2}(\d{2})\D+\d{2}(\d{2})/);
+  a.download = `ho_so_hoc_Sinh_A4${ny ? `_${ny[1]}-${ny[2]}` : ''}.xlsx`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  alert(`Đã xuất ${chon.length} lớp.` + (cu ? `\nLấy từ file A4 cũ: ${soCu} học sinh.` : '')
+    + `\nSheet "Kiểm tra dữ liệu": ${canhBao.length} cảnh báo.`);
+}
 
 renderCfg();
 </script>
