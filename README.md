@@ -12,7 +12,9 @@ Trang web một file (`ThongKeDanToc.html`) lập bảng **thống kê số lư�
 
 ## Thống kê giáo viên
 
-Tab **Giáo viên** đọc file xuất bằng "Xuất Excel Cấp 2 Mẫu CSDL Bộ" và xuất file Excel gồm 4 sheet:
+Cách lấy file đúng mẫu: trên vnEdu phần Nhân sự, chọn **Tùy chọn** → **Xuất ra Excel Nhân sự Mẫu CSDL Bộ** → **Xuất Excel Cấp 2 Mẫu CSDL Bộ**.
+
+Tab **Giáo viên** đọc file này và xuất file Excel gồm 4 sheet:
 
 - **Thống kê chung**: theo toàn trường, CBQL, giáo viên, nhân viên (SL, nữ): dân tộc, tôn giáo, Đảng, Đoàn, độ tuổi, số năm công tác, hợp đồng, chức vụ, ngạch/hạng, các loại trình độ, bồi dưỡng, đánh giá viên chức, giáo viên giỏi.
 - **Giáo viên theo môn**: số lượng, trình độ, hạng, tiết dạy trung bình, dạy giỏi, đánh giá theo từng môn (chỉ tính vị trí "Giáo viên").

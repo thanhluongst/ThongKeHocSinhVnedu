@@ -138,6 +138,7 @@
     <h1>Thống kê giáo viên</h1>
     <p class="sub">Kéo file giáo viên đã xuất bằng "Xuất Excel Cấp 2 Mẫu CSDL Bộ" vào đây. Thống kê toàn bộ cán bộ quản lý, giáo viên, nhân viên trong file. Tên trường, năm học lấy từ "Cài đặt báo cáo" ở tab Học sinh. Dữ liệu chỉ xử lý trên máy bạn, không gửi đi đâu.</p>
     <div class="card">
+      <p style="margin:0 0 12px"><b>Cách lấy file đúng mẫu:</b> trên vnEdu phần Nhân sự, chọn <b>Tùy chọn</b> → <b>Xuất ra Excel Nhân sự Mẫu CSDL Bộ</b> → <b>Xuất Excel Cấp 2 Mẫu CSDL Bộ</b>.</p>
       <div class="drop" id="gvDrop">
         <div><b>Chọn file</b> hoặc kéo thả file giáo viên (.xls, .xlsx) vào đây</div>
         <div class="hint" id="gvFileName">Chưa chọn file</div>
@@ -880,7 +881,8 @@ function parseGv(buf) {
     }
     return list;
   }
-  throw new Error('Đây không phải file giáo viên mẫu CSDL Bộ (cần có các cột Họ tên, Vị trí việc làm…).' + cotCuaFile(wb));
+  throw new Error('Đây không phải file giáo viên mẫu CSDL Bộ (cần có các cột Họ tên, Vị trí việc làm…).\n'
+    + 'Trên vnEdu phần Nhân sự, chọn Tùy chọn → Xuất ra Excel Nhân sự Mẫu CSDL Bộ → Xuất Excel Cấp 2 Mẫu CSDL Bộ.' + cotCuaFile(wb));
 }
 
 // Một dòng chỉ tiêu: tổng, nữ của toàn trường và của từng vị trí việc làm
