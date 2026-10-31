@@ -46,6 +46,7 @@
   td.n { text-align: right; font-variant-numeric: tabular-nums; }
   tr.lv0 td { background: var(--lv0); font-weight: 700; }
   tr.lv1 td { background: var(--lv1); font-weight: 600; }
+  tr.cong td { font-weight: 700; }
   td.name { min-width: 200px; }
   details summary { cursor: pointer; font-weight: 600; }
   .hint { color: var(--muted); font-size: 12px; }
@@ -883,12 +884,12 @@ function gvSections(ds) {
     const hang = v => { const i = thuTu.indexOf(v); return i < 0 ? thuTu.length : i; };
     const rows = [...nhom.entries()].sort((a, b) => hang(a[0]) - hang(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0], 'vi'))
       .map(([v, l]) => gvDong(v, l));
-    if (rows.length) out.push({ title, rows });
+    if (rows.length) out.push({ title, rows, cong: gvDong('Cộng', [...nhom.values()].flat()) });
   };
-  // Mục gồm các cột đánh dấu "x"
+  // Mục gồm các cột đánh dấu "x"; một người có thể thuộc nhiều dòng nhưng hàng Cộng chỉ tính một lần
   const co = (title, cot) => {
     const rows = cot.map(([label, f]) => gvDong(label, ds.filter(g => g[f]))).filter(r => r.sl);
-    if (rows.length) out.push({ title, rows });
+    if (rows.length) out.push({ title, rows, cong: gvDong('Cộng', ds.filter(g => cot.some(([, f]) => g[f]))) });
   };
   muc('Giới tính', g => g.gt);
   muc('Dân tộc', g => g.danToc, { thuTu: ['Kinh'], trong: 'Chưa nhập' });
@@ -991,7 +992,7 @@ function gvBuild() {
   const dong = (r, cls) => `<tr class="${cls}"><td class="name">${esc(r.label)}</td>${o(r)}<td class="n">${fmtPct(pct(r.sl, tong.sl))}</td>${r.nhom.map(o).join('')}</tr>`;
   $('gvTbl').innerHTML = `<thead><tr><th rowspan="2">Chỉ tiêu</th><th colspan="3">Toàn trường</th>${GV_NHAN.map(n => `<th colspan="2">${n}</th>`).join('')}</tr>
     <tr><th>SL</th><th>Nữ</th><th>TL(%)</th>${GV_NHAN.map(() => '<th>SL</th><th>Nữ</th>').join('')}</tr></thead><tbody>`
-    + dong(tong, 'lv0') + sections.map(s => `<tr class="lv1"><td colspan="10">${esc(s.title)}</td></tr>` + s.rows.map(r => dong(r, '')).join('')).join('') + '</tbody>';
+    + dong(tong, 'lv0') + sections.map(s => `<tr class="lv1"><td colspan="10">${esc(s.title)}</td></tr>` + s.rows.map(r => dong(r, '')).join('') + dong(s.cong, 'cong')).join('') + '</tbody>';
   $('gvMonTbl').innerHTML = `<thead><tr><th rowspan="2">Môn dạy</th>${GV_MON_COT.map(c => `<th colspan="${c.subs.length}">${c.title}</th>`).join('')}</tr>
     <tr>${GV_MON_SUBS.map(s => `<th>${s[0]}</th>`).join('')}</tr></thead><tbody>`
     + mon.map((r, i) => `<tr class="${i ? '' : 'lv0'}"><td class="name">${esc(r.label)}</td>${r.vals.map((v, k) => `<td class="n">${fmtCell(v, GV_MON_SUBS[k][2])}</td>`).join('')}</tr>`).join('') + '</tbody>';
@@ -1076,11 +1077,11 @@ $('gvBtn').onclick = async () => {
   GV_NHAN.forEach((n, i) => { ws.mergeCells(6, 5 + i * 2, 6, 6 + i * 2); ws.getCell(6, 5 + i * 2).value = n; });
   ['SL', 'Nữ', 'TL(%)', 'SL', 'Nữ', 'SL', 'Nữ', 'SL', 'Nữ'].forEach((t, k) => ws.getCell(7, 2 + k).value = t);
   oTieuDe(ws, 10);
-  const ghi = (r, laTong) => {
+  const ghi = (r, laTong, laCong) => {
     const row = ws.addRow([(laTong ? '' : '  ') + r.label, r.sl || null, r.nu || null, pct(r.sl, tong.sl) || null, ...r.nhom.flatMap(c => [c.sl || null, c.nu || null])]);
     for (let k = 1; k <= 10; k++) {
       const cell = row.getCell(k);
-      cell.border = border; cell.font = font({ bold: laTong });
+      cell.border = border; cell.font = font({ bold: laTong || laCong });
       cell.alignment = { horizontal: k === 1 ? 'left' : 'center', vertical: 'middle' };
       if (k === 4) cell.numFmt = '0.0';
       if (laTong) cell.fill = fill('FFFFF2CC');
@@ -1093,6 +1094,7 @@ $('gvBtn').onclick = async () => {
     const cell = row.getCell(1);
     cell.font = font({ bold: true }); cell.border = border; cell.fill = fill('FFF2F2F2');
     s.rows.forEach(r => ghi(r, false));
+    ghi(s.cong, false, true);
   }
   kyTen(ws, lineA, 10);
 
