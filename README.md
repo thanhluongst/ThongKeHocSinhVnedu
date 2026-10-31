@@ -10,6 +10,15 @@ Trang web một file (`ThongKeDanToc.html`) lập bảng **thống kê số lư�
 - Xuất Excel có quốc hiệu, tiêu đề, kẻ khung, chỗ ký; kèm sheet danh sách học sinh dân tộc, khuyết tật, diện chính sách để đối chiếu.
 - Dữ liệu chỉ xử lý trong trình duyệt, không gửi lên máy chủ nào.
 
+## Thống kê giáo viên
+
+Tab **Giáo viên** đọc file xuất bằng "Xuất Excel Cấp 2 Mẫu CSDL Bộ" và xuất file Excel gồm 4 sheet:
+
+- **Thống kê chung**: theo toàn trường, CBQL, giáo viên, nhân viên (SL, nữ): dân tộc, tôn giáo, Đảng, Đoàn, độ tuổi, số năm công tác, hợp đồng, chức vụ, ngạch/hạng, các loại trình độ, bồi dưỡng, đánh giá viên chức, giáo viên giỏi.
+- **Giáo viên theo môn**: số lượng, trình độ, hạng, tiết dạy trung bình, dạy giỏi, đánh giá theo từng môn (chỉ tính vị trí "Giáo viên").
+- **Danh sách**: để đối chiếu, không kèm CCCD, BHXH, điện thoại, email.
+- **Kiểm tra dữ liệu**: người thiếu mã định danh, ngày sinh, CCCD, môn dạy, số tiết…
+
 ## Cách dùng
 
 1. Trên vnEdu, xuất danh sách học sinh toàn trường ra Excel (.xls).

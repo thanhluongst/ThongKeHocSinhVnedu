@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Thống kê số lượng HS</title>
+<title>Thống kê học sinh, giáo viên</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
@@ -58,6 +58,12 @@
 </head>
 <body>
 <main>
+  <div class="row" style="gap:6px;margin-bottom:14px">
+    <button id="tabHs" class="primary">Học sinh</button>
+    <button id="tabGv">Giáo viên</button>
+  </div>
+
+  <div id="paneHs">
   <h1>Thống kê số lượng học sinh</h1>
   <p class="sub">Kéo file danh sách học sinh xuất từ vnEdu vào đây. Bảng thống kê theo mẫu vnEdu: tổng số, nữ, dân tộc (chi tiết từng dân tộc với nam, nữ, tỉ lệ; không tính dân tộc Kinh và người nước ngoài), nữ dân tộc, khuyết tật, diện chính sách. Dữ liệu chỉ xử lý trên máy bạn, không gửi đi đâu.</p>
 
@@ -120,6 +126,33 @@
         <span class="hint" id="a4Info"></span>
         <span style="flex:1"></span>
         <button class="primary" id="a4Btn">Xuất mẫu A4</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div id="paneGv" class="hidden">
+    <h1>Thống kê chi tiết giáo viên</h1>
+    <p class="sub">Kéo file giáo viên đã xuất bằng "Xuất Excel Cấp 2 Mẫu CSDL Bộ" vào đây. Thống kê toàn bộ cán bộ quản lý, giáo viên, nhân viên trong file. Tên trường, năm học lấy từ "Cài đặt báo cáo" ở tab Học sinh. Dữ liệu chỉ xử lý trên máy bạn, không gửi đi đâu.</p>
+    <div class="card">
+      <div class="drop" id="gvDrop">
+        <div><b>Chọn file</b> hoặc kéo thả file giáo viên (.xls, .xlsx) vào đây</div>
+        <div class="hint" id="gvFileName">Chưa chọn file</div>
+        <input type="file" id="gvFile" accept=".xls,.xlsx" class="hidden">
+      </div>
+      <div class="row" style="margin-top:14px">
+        <span class="hint">File Excel gồm: Thống kê chung, Giáo viên theo môn, Danh sách (không kèm CCCD, BHXH, điện thoại, email), Kiểm tra dữ liệu.</span>
+        <span style="flex:1"></span>
+        <button class="primary" id="gvBtn" disabled>Xuất Excel</button>
+      </div>
+    </div>
+    <div id="gvResult" class="hidden">
+      <div class="stats" id="gvStats"></div>
+      <div id="gvWarn" class="warn"></div>
+      <div class="card tablewrap" style="margin-top:16px"><table id="gvTbl"></table></div>
+      <div class="card tablewrap">
+        <h2 style="font-size:16px;margin:0 0 8px">Giáo viên theo môn dạy</h2>
+        <table id="gvMonTbl"></table>
       </div>
     </div>
   </div>
@@ -246,15 +279,18 @@ function parseWorkbook(buf) {
     }
     return list;
   }
-  // Không đúng loại file: cho biết file đang có những cột nào để người dùng nhận ra
-  let found = '';
+  throw new Error('Đây không phải file danh sách học sinh có cột "Dân tộc".\n'
+    + 'Hãy dùng file danh sách học sinh toàn trường xuất từ vnEdu (file có các cột Lớp học, Họ và tên, Giới tính, Dân tộc…), không dùng file báo cáo thống kê.' + cotCuaFile(wb));
+}
+
+// Không đúng loại file: cho biết file đang có những cột nào để người dùng nhận ra
+function cotCuaFile(wb) {
   for (const sn of wb.SheetNames) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false });
     const head = rows.find(r => r.filter(c => norm(c)).length >= 4);
-    if (head) { found = `\n\nFile này (sheet "${sn}") có các cột: ${[...new Set(head.map(norm).filter(Boolean))].slice(0, 12).join(', ')}…`; break; }
+    if (head) return `\n\nFile này (sheet "${sn}") có các cột: ${[...new Set(head.map(norm).filter(Boolean))].slice(0, 12).join(', ')}…`;
   }
-  throw new Error('Đây không phải file danh sách học sinh có cột "Dân tộc".\n'
-    + 'Hãy dùng file danh sách học sinh toàn trường xuất từ vnEdu (file có các cột Lớp học, Họ và tên, Giới tính, Dân tộc…), không dùng file báo cáo thống kê.' + found);
+  return '';
 }
 
 async function loadFile(f) {
@@ -777,6 +813,352 @@ async function xuatA4() {
   alert(`Đã xuất ${chon.length} lớp.` + (cu ? `\nLấy từ file A4 cũ: ${soCu} học sinh.` : '')
     + `\nSheet "Kiểm tra dữ liệu": ${canhBao.length} cảnh báo.`);
 }
+
+// ---------- Thống kê giáo viên (file "Xuất Excel Cấp 2 Mẫu CSDL Bộ") ----------
+let gvDs = null, gvBao = null;
+const GV_COT = {
+  ma: 'mã định danh bộ gd&đt', ten: 'họ tên', gt: 'giới tính', ns: 'ngày sinh', tt: 'trạng thái cb', cccd: 'số cmtnd/tcc',
+  email: 'email', dthoai: 'điện thoại', danToc: 'dân tộc', tonGiao: 'tôn giáo', doan: 'là đoàn viên', dang: 'là đảng viên',
+  bhxh: 'số sổ bhxh', vt: 'vị trí việc làm', cv: 'nhóm chức vụ', hd: 'hình thức hợp đồng', ntd: 'ngày tuyển dụng',
+  mon: 'môn dạy', hang: 'ngạch/hạng', tiet: 's.tiết thực dạy trên tuần', kn: 's.tiết thực k.nhiệm trên tuần',
+  kns: 'đã tập huấn dạy kn sống', hoaNhap: 'dạy hskt học hòa nhập', buoi1: 'dạy 1 buổi/ngày', buoi2: 'dạy 2 buổi/ngày',
+  doi: 'chuyên trách đội', hsl: 'hệ số lương', bdtx: 'kq b.dưỡng t.xuyên', tdcm: 't.độ c.môn n.vụ', llct: 't.độ llct',
+  qlgd: 't.độ quản lý gd', nn: 'khung n.lực n.ngữ', tiengDt: 'gv có chứng chỉ tiếng dân tộc thiểu số', tin: 't.độ tin học',
+  cn: 'chuyên ngành chính', tdc: 'trình độ chính', thaySach: 'tham gia bồi dưỡng thay sách', dg: 'đánh giá viên chức',
+  dayGioi: 'giáo viên dạy giỏi', cnGioi: 'gv chủ nhiệm giỏi', tptGioi: 'gv tổng phụ trách đội giỏi',
+};
+const GV_NHOM = ['Cán bộ quản lý', 'Giáo viên', 'Nhân viên'];
+const GV_NHAN = ['CBQL', 'Giáo viên', 'Nhân viên'];
+const GV_TUOI = ['Dưới 30 tuổi', 'Từ 30 đến 39 tuổi', 'Từ 40 đến 49 tuổi', 'Từ 50 đến 59 tuổi', 'Từ 60 tuổi trở lên'];
+const GV_NAM_CT = ['Dưới 5 năm', 'Từ 5 đến 9 năm', 'Từ 10 đến 19 năm', 'Từ 20 đến 29 năm', 'Từ 30 năm trở lên'];
+const GV_CAP = ['Cấp Tỉnh', 'Cấp Huyện', 'Cấp Xã/phường', 'Cấp trường'];
+const namCua = v => { const m = ngaySinhA4(v).match(/^\d{2}\/\d{2}\/(\d{4})$/); return m ? +m[1] : 0; };
+const tuoiGv = g => namCua(g.ns) ? new Date().getFullYear() - namCua(g.ns) : null;
+const soGv = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? null : n; };
+const nhomTuoi = t => t === null ? '' : GV_TUOI[t < 30 ? 0 : t < 40 ? 1 : t < 50 ? 2 : t < 60 ? 3 : 4];
+const nhomNamCt = g => {
+  if (!namCua(g.ntd)) return '';
+  const n = new Date().getFullYear() - namCua(g.ntd);
+  return GV_NAM_CT[n < 5 ? 0 : n < 10 ? 1 : n < 20 ? 2 : n < 30 ? 3 : 4];
+};
+const trungBinh = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : 0;
+const hangGv = g => (g.hang.match(/hạng\s+(III|II|I)(?![A-Z])/) || [])[1] || '';
+const laDanToc = g => g.danToc && !EXCLUDED.includes(key(g.danToc));
+
+function parseGv(buf) {
+  const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+  for (const sn of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false });
+    const h = rows.findIndex(r => r.some(c => key(c) === GV_COT.ten) && r.some(c => key(c) === GV_COT.vt));
+    if (h < 0) continue;
+    const head = rows[h].map(key);
+    const idx = Object.entries(GV_COT).map(([f, name]) => [f, head.indexOf(name)]);
+    const list = [];
+    for (const row of rows.slice(h + 1)) {
+      const g = {};
+      for (const [f, i] of idx) g[f] = i >= 0 ? norm(row[i]).replace(/\s+/g, ' ') : '';
+      if (g.ten) list.push(g);
+    }
+    return list;
+  }
+  throw new Error('Đây không phải file giáo viên mẫu CSDL Bộ (cần có các cột Họ tên, Vị trí việc làm…).' + cotCuaFile(wb));
+}
+
+// Một dòng chỉ tiêu: tổng, nữ của toàn trường và của từng vị trí việc làm
+function gvDong(label, list) {
+  const o = arr => ({ sl: arr.length, nu: arr.filter(g => key(g.gt) === 'nữ').length });
+  return { label, ...o(list), nhom: GV_NHOM.map(n => o(list.filter(g => g.vt === n))) };
+}
+function gvSections(ds) {
+  const out = [];
+  // Mục theo giá trị của một cột: thuTu là thứ tự cố định, còn lại xếp theo số lượng; trong là nhãn cho ô trống (không có thì bỏ qua)
+  const muc = (title, get, { thuTu = [], trong = null } = {}) => {
+    const nhom = new Map();
+    for (const g of ds) {
+      const v = get(g) || trong;
+      if (!v) continue;
+      if (!nhom.has(v)) nhom.set(v, []);
+      nhom.get(v).push(g);
+    }
+    const hang = v => { const i = thuTu.indexOf(v); return i < 0 ? thuTu.length : i; };
+    const rows = [...nhom.entries()].sort((a, b) => hang(a[0]) - hang(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0], 'vi'))
+      .map(([v, l]) => gvDong(v, l));
+    if (rows.length) out.push({ title, rows });
+  };
+  // Mục gồm các cột đánh dấu "x"
+  const co = (title, cot) => {
+    const rows = cot.map(([label, f]) => gvDong(label, ds.filter(g => g[f]))).filter(r => r.sl);
+    if (rows.length) out.push({ title, rows });
+  };
+  muc('Giới tính', g => g.gt);
+  muc('Dân tộc', g => g.danToc, { thuTu: ['Kinh'], trong: 'Chưa nhập' });
+  muc('Tôn giáo', g => g.tonGiao, { thuTu: ['Không'], trong: 'Chưa nhập' });
+  co('Đảng, Đoàn', [['Đảng viên', 'dang'], ['Đoàn viên', 'doan']]);
+  muc('Độ tuổi (tính theo năm sinh)', g => nhomTuoi(tuoiGv(g)), { thuTu: GV_TUOI, trong: 'Chưa rõ ngày sinh' });
+  muc('Số năm công tác (từ ngày tuyển dụng)', nhomNamCt, { thuTu: GV_NAM_CT, trong: 'Chưa rõ ngày tuyển dụng' });
+  muc('Trạng thái', g => g.tt, { trong: 'Chưa nhập' });
+  muc('Hình thức hợp đồng', g => g.hd, { trong: 'Chưa nhập' });
+  muc('Chức vụ', g => g.cv);
+  muc('Ngạch / hạng', g => g.hang, { trong: 'Chưa nhập' });
+  muc('Trình độ chuyên môn nghiệp vụ', g => g.tdcm, { trong: 'Chưa nhập' });
+  muc('Trình độ đào tạo chính', g => g.tdc, { trong: 'Chưa nhập' });
+  muc('Chuyên ngành chính', g => g.cn, { trong: 'Chưa nhập' });
+  muc('Trình độ lý luận chính trị', g => g.llct, { trong: 'Chưa có' });
+  muc('Trình độ quản lý giáo dục', g => g.qlgd, { trong: 'Chưa nhập' });
+  muc('Ngoại ngữ (khung năng lực)', g => g.nn, { trong: 'Chưa có' });
+  muc('Chứng chỉ tiếng dân tộc', g => g.tiengDt);
+  muc('Trình độ tin học', g => g.tin, { trong: 'Chưa có' });
+  muc('Bồi dưỡng thường xuyên', g => g.bdtx, { trong: 'Chưa nhập' });
+  muc('Bồi dưỡng thay sách', g => g.thaySach);
+  co('Giảng dạy', [['Dạy 1 buổi/ngày', 'buoi1'], ['Dạy 2 buổi/ngày', 'buoi2'], ['Dạy HSKT học hòa nhập', 'hoaNhap'],
+    ['Đã tập huấn dạy kỹ năng sống', 'kns'], ['Chuyên trách Đội', 'doi']]);
+  muc('Đánh giá viên chức', g => g.dg, { thuTu: ['Xuất sắc', 'Hoàn thành tốt', 'Hoàn thành (hạn chế về NL)', 'Không hoàn thành nhiệm vụ'], trong: 'Chưa nhập' });
+  muc('Giáo viên dạy giỏi', g => g.dayGioi, { thuTu: GV_CAP });
+  muc('Giáo viên chủ nhiệm giỏi', g => g.cnGioi, { thuTu: GV_CAP });
+  muc('Giáo viên tổng phụ trách Đội giỏi', g => g.tptGioi, { thuTu: GV_CAP });
+  return out;
+}
+
+// Bảng giáo viên theo môn: nhóm cột -> [nhãn, hàm tính trên danh sách GV của môn, có lẻ thập phân]
+const dem = f => l => l.filter(f).length;
+const GV_MON_COT = [
+  { title: 'Đội ngũ', subs: [['SL', l => l.length], ['Nữ', dem(g => key(g.gt) === 'nữ')], ['Dân tộc', dem(laDanToc)], ['Đảng viên', dem(g => g.dang)],
+    ['Tuổi TB', l => trungBinh(l.map(tuoiGv).filter(t => t !== null)), true]] },
+  { title: 'Trình độ chuyên môn', subs: [['Trên ĐH', dem(g => /^(thạc|tiến)/i.test(g.tdcm))], ['Đại học', dem(g => /^đại học/i.test(g.tdcm))],
+    ['Cao đẳng', dem(g => /^cao đẳng/i.test(g.tdcm))], ['Khác', dem(g => !/^(thạc|tiến|đại học|cao đẳng)/i.test(g.tdcm))]] },
+  { title: 'Hạng', subs: [['I', dem(g => hangGv(g) === 'I')], ['II', dem(g => hangGv(g) === 'II')], ['III', dem(g => hangGv(g) === 'III')], ['Khác', dem(g => !hangGv(g))]] },
+  { title: 'Tiết/tuần (TB)', subs: [['Dạy', l => trungBinh(l.map(g => soGv(g.tiet)).filter(n => n !== null)), true],
+    ['Kiêm nhiệm', l => trungBinh(l.map(g => soGv(g.kn)).filter(n => n !== null)), true]] },
+  { title: 'Dạy giỏi', subs: [['Tỉnh', dem(g => /tỉnh/i.test(g.dayGioi))], ['Xã, huyện', dem(g => /xã|huyện/i.test(g.dayGioi))], ['Trường', dem(g => /trường/i.test(g.dayGioi))]] },
+  { title: 'Đánh giá', subs: [['Xuất sắc', dem(g => g.dg === 'Xuất sắc')], ['HT tốt', dem(g => g.dg === 'Hoàn thành tốt')], ['Khác', dem(g => g.dg !== 'Xuất sắc' && g.dg !== 'Hoàn thành tốt')]] },
+];
+const GV_MON_SUBS = GV_MON_COT.flatMap(c => c.subs);
+function gvTheoMon(ds) {
+  const gv = ds.filter(g => g.vt === 'Giáo viên');
+  const mon = new Map();
+  for (const g of gv) {
+    const m = g.mon || 'Chưa nhập môn';
+    if (!mon.has(m)) mon.set(m, []);
+    mon.get(m).push(g);
+  }
+  const dong = (label, l) => ({ label, vals: GV_MON_SUBS.map(s => s[1](l)) });
+  return [dong('Cộng', gv), ...[...mon.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'vi')).map(([m, l]) => dong(m, l))];
+}
+
+function kiemTraGv(ds) {
+  const out = [];
+  const soLan = f => { const m = new Map(); for (const g of ds) if (g[f]) m.set(g[f], (m.get(g[f]) || 0) + 1); return m; };
+  const soMa = soLan('ma'), soCccd = soLan('cccd');
+  for (const g of ds) {
+    const loi = [];
+    if (!g.ma) loi.push('thiếu mã định danh Bộ'); else if (soMa.get(g.ma) > 1) loi.push('trùng mã định danh Bộ');
+    if (!g.ns) loi.push('thiếu ngày sinh'); else if (!namCua(g.ns)) loi.push('ngày sinh không hợp lệ');
+    else if (tuoiGv(g) < 18 || tuoiGv(g) > 65) loi.push(`tuổi bất thường (${tuoiGv(g)})`);
+    if (!g.cccd) loi.push('thiếu số CCCD'); else if (!/^\d{12}$/.test(g.cccd)) loi.push('số CCCD không đủ 12 số');
+    else if (soCccd.get(g.cccd) > 1) loi.push('trùng số CCCD');
+    if (!g.dthoai) loi.push('thiếu điện thoại');
+    if (!g.email) loi.push('thiếu email');
+    if (!g.bhxh) loi.push('thiếu số sổ BHXH');
+    if (!g.ntd) loi.push('thiếu ngày tuyển dụng'); else if (!namCua(g.ntd)) loi.push('ngày tuyển dụng không hợp lệ');
+    if (!g.vt) loi.push('thiếu vị trí việc làm');
+    if (!g.hang) loi.push('thiếu ngạch/hạng');
+    if (!g.tdcm) loi.push('thiếu trình độ chuyên môn');
+    if (g.vt === 'Giáo viên') {
+      if (!g.mon) loi.push('thiếu môn dạy');
+      if (!soGv(g.tiet)) loi.push('thiếu số tiết dạy');
+    }
+    if (loi.length) out.push([g.ten, g.vt, g.mon, loi.join('; ')]);
+  }
+  return out;
+}
+
+function gvBuild() {
+  gvBao = { sections: gvSections(gvDs), tong: gvDong('Tổng số', gvDs), mon: gvTheoMon(gvDs), canhBao: kiemTraGv(gvDs) };
+  const { tong, mon, sections, canhBao } = gvBao;
+  const cGv = tong.nhom[1], tuoi = trungBinh(gvDs.filter(g => g.vt === 'Giáo viên').map(tuoiGv).filter(t => t !== null));
+  const tile = (v, t) => `${v} <span class="k">(${fmtPct(pct(v, t)) || 0}%)</span>`;
+  $('gvStats').innerHTML = [
+    ['Tổng số', tong.sl], ['Nữ', tile(tong.nu, tong.sl)], ['CBQL', tong.nhom[0].sl],
+    ['Giáo viên (nữ)', `${cGv.sl} <span class="k">(${cGv.nu})</span>`], ['Nhân viên', tong.nhom[2].sl],
+    ['Đảng viên', tile(gvDs.filter(g => g.dang).length, tong.sl)], ['Dân tộc (không tính Kinh)', tile(gvDs.filter(laDanToc).length, tong.sl)],
+    ['Tuổi TB giáo viên', fmtPct(tuoi)],
+  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  const lech = gvDs.filter(g => !['đang làm việc', 'chuyển đến'].includes(key(g.tt))).length;
+  $('gvWarn').textContent = [canhBao.length ? `Có ${canhBao.length} người cần kiểm tra dữ liệu (xem sheet "Kiểm tra dữ liệu" khi xuất Excel).` : '',
+    lech ? `Có ${lech} người không ở trạng thái "Đang làm việc" hoặc "Chuyển đến" nhưng vẫn được tính, xem mục Trạng thái.` : ''].filter(Boolean).join(' ');
+
+  const o = c => `<td class="n">${c.sl || ''}</td><td class="n">${c.nu || ''}</td>`;
+  const dong = (r, cls) => `<tr class="${cls}"><td class="name">${esc(r.label)}</td>${o(r)}<td class="n">${fmtPct(pct(r.sl, tong.sl))}</td>${r.nhom.map(o).join('')}</tr>`;
+  $('gvTbl').innerHTML = `<thead><tr><th rowspan="2">Chỉ tiêu</th><th colspan="3">Toàn trường</th>${GV_NHAN.map(n => `<th colspan="2">${n}</th>`).join('')}</tr>
+    <tr><th>SL</th><th>Nữ</th><th>TL(%)</th>${GV_NHAN.map(() => '<th>SL</th><th>Nữ</th>').join('')}</tr></thead><tbody>`
+    + dong(tong, 'lv0') + sections.map(s => `<tr class="lv1"><td colspan="10">${esc(s.title)}</td></tr>` + s.rows.map(r => dong(r, '')).join('')).join('') + '</tbody>';
+  $('gvMonTbl').innerHTML = `<thead><tr><th rowspan="2">Môn dạy</th>${GV_MON_COT.map(c => `<th colspan="${c.subs.length}">${c.title}</th>`).join('')}</tr>
+    <tr>${GV_MON_SUBS.map(s => `<th>${s[0]}</th>`).join('')}</tr></thead><tbody>`
+    + mon.map((r, i) => `<tr class="${i ? '' : 'lv0'}"><td class="name">${esc(r.label)}</td>${r.vals.map((v, k) => `<td class="n">${fmtCell(v, GV_MON_SUBS[k][2])}</td>`).join('')}</tr>`).join('') + '</tbody>';
+  $('gvResult').classList.remove('hidden');
+  $('gvBtn').disabled = false;
+}
+
+async function loadGv(f) {
+  $('gvFileName').textContent = f.name;
+  try {
+    gvDs = parseGv(new Uint8Array(await f.arrayBuffer()));
+    if (!gvDs.length) throw new Error('File không có dòng dữ liệu nào.');
+    gvBuild();
+  } catch (e) {
+    gvDs = null;
+    $('gvResult').classList.add('hidden');
+    $('gvBtn').disabled = true;
+    alert('Không đọc được file: ' + e.message);
+  }
+}
+const gvDrop = $('gvDrop');
+gvDrop.onclick = () => $('gvFile').click();
+$('gvFile').onchange = e => e.target.files[0] && loadGv(e.target.files[0]);
+gvDrop.ondragover = e => { e.preventDefault(); gvDrop.classList.add('over'); };
+gvDrop.ondragleave = () => gvDrop.classList.remove('over');
+gvDrop.ondrop = e => { e.preventDefault(); gvDrop.classList.remove('over'); e.dataTransfer.files[0] && loadGv(e.dataTransfer.files[0]); };
+
+for (const [btn, pane, nutKhac, paneKhac] of [['tabHs', 'paneHs', 'tabGv', 'paneGv'], ['tabGv', 'paneGv', 'tabHs', 'paneHs']]) {
+  $(btn).onclick = () => {
+    $(pane).classList.remove('hidden'); $(paneKhac).classList.add('hidden');
+    $(btn).classList.add('primary'); $(nutKhac).classList.remove('primary');
+  };
+}
+
+$('gvBtn').onclick = async () => {
+  const { tong, sections, mon, canhBao } = gvBao;
+  const wb = new ExcelJS.Workbook();
+  const thin = { style: 'thin' }, border = { top: thin, left: thin, bottom: thin, right: thin };
+  const font = (o = {}) => ({ name: 'Times New Roman', size: 12, ...o });
+  const fill = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+  const headFill = fill('FFDDEBF7');
+  const d = new Date();
+
+  // Quốc hiệu, tiêu đề; trả về hàm ghi dòng gộp ô để dùng tiếp cho chỗ ký
+  const dauTrang = (ws, nCols, tieuDe) => {
+    const line = (r, c1, c2, text, f) => {
+      ws.mergeCells(r, c1, r, c2);
+      const cell = ws.getCell(r, c1);
+      cell.value = text; cell.font = font(f); cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    };
+    const giua = Math.ceil(nCols / 2) - 1;
+    line(1, 1, giua, cfg.unit, {});
+    line(2, 1, giua, cfg.school, { bold: true });
+    line(1, giua + 1, nCols, 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM', { bold: true });
+    line(2, giua + 1, nCols, 'Độc lập - Tự do - Hạnh phúc', { bold: true });
+    line(4, 1, nCols, tieuDe, { bold: true, size: 14 });
+    line(5, 1, nCols, cfg.subtitle, { italic: true });
+    return line;
+  };
+  const kyTen = (ws, line, nCols) => {
+    const fr = ws.rowCount + 2, giua = Math.ceil(nCols / 2) - 1;
+    line(fr, giua + 1, nCols, `Nhơn Mỹ, ngày ${d.getDate()} tháng ${d.getMonth() + 1} năm ${d.getFullYear()}`, { italic: true });
+    line(fr + 1, 1, giua, 'NGƯỜI LẬP BIỂU', { bold: true });
+    line(fr + 1, giua + 1, nCols, 'HIỆU TRƯỞNG', { bold: true });
+  };
+  const oTieuDe = (ws, nCols) => {
+    for (const r of [6, 7]) for (let k = 1; k <= nCols; k++) {
+      const cell = ws.getCell(r, k);
+      cell.font = font({ bold: true }); cell.border = border; cell.fill = headFill;
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    }
+  };
+  const sheetBaoCao = ten => wb.addWorksheet(ten, { views: [{ state: 'frozen', xSplit: 1, ySplit: 7 }],
+    pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '6:7' } });
+
+  // Sheet 1: chỉ tiêu theo vị trí việc làm
+  const ws = sheetBaoCao('Thống kê chung');
+  ws.columns = [{ width: 52 }, ...Array.from({ length: 9 }, () => ({ width: 9 }))];
+  const lineA = dauTrang(ws, 10, 'THỐNG KÊ CHI TIẾT ĐỘI NGŨ CÁN BỘ, GIÁO VIÊN, NHÂN VIÊN');
+  ws.mergeCells(6, 1, 7, 1); ws.getCell(6, 1).value = 'Chỉ tiêu';
+  ws.mergeCells(6, 2, 6, 4); ws.getCell(6, 2).value = 'Toàn trường';
+  GV_NHAN.forEach((n, i) => { ws.mergeCells(6, 5 + i * 2, 6, 6 + i * 2); ws.getCell(6, 5 + i * 2).value = n; });
+  ['SL', 'Nữ', 'TL(%)', 'SL', 'Nữ', 'SL', 'Nữ', 'SL', 'Nữ'].forEach((t, k) => ws.getCell(7, 2 + k).value = t);
+  oTieuDe(ws, 10);
+  const ghi = (r, laTong) => {
+    const row = ws.addRow([(laTong ? '' : '  ') + r.label, r.sl || null, r.nu || null, pct(r.sl, tong.sl) || null, ...r.nhom.flatMap(c => [c.sl || null, c.nu || null])]);
+    for (let k = 1; k <= 10; k++) {
+      const cell = row.getCell(k);
+      cell.border = border; cell.font = font({ bold: laTong });
+      cell.alignment = { horizontal: k === 1 ? 'left' : 'center', vertical: 'middle' };
+      if (k === 4) cell.numFmt = '0.0';
+      if (laTong) cell.fill = fill('FFFFF2CC');
+    }
+  };
+  ghi(tong, true);
+  for (const s of sections) {
+    const row = ws.addRow([s.title]);
+    ws.mergeCells(row.number, 1, row.number, 10);
+    const cell = row.getCell(1);
+    cell.font = font({ bold: true }); cell.border = border; cell.fill = fill('FFF2F2F2');
+    s.rows.forEach(r => ghi(r, false));
+  }
+  kyTen(ws, lineA, 10);
+
+  // Sheet 2: giáo viên theo môn
+  const nMon = 1 + GV_MON_SUBS.length;
+  const wm = sheetBaoCao('Giáo viên theo môn');
+  wm.columns = [{ width: 34 }, ...GV_MON_SUBS.map(() => ({ width: 8.5 }))];
+  const lineB = dauTrang(wm, nMon, 'THỐNG KÊ GIÁO VIÊN THEO MÔN DẠY');
+  wm.mergeCells(6, 1, 7, 1); wm.getCell(6, 1).value = 'Môn dạy';
+  let c = 2;
+  for (const g of GV_MON_COT) {
+    wm.mergeCells(6, c, 6, c + g.subs.length - 1);
+    wm.getCell(6, c).value = g.title;
+    g.subs.forEach((s, k) => wm.getCell(7, c + k).value = s[0]);
+    c += g.subs.length;
+  }
+  oTieuDe(wm, nMon);
+  wm.getRow(7).height = 32;
+  mon.forEach((r, i) => {
+    const row = wm.addRow([r.label, ...r.vals.map(v => v || null)]);
+    for (let k = 1; k <= nMon; k++) {
+      const cell = row.getCell(k);
+      cell.border = border; cell.font = font({ bold: !i });
+      cell.alignment = { horizontal: k === 1 ? 'left' : 'center', vertical: 'middle' };
+      if (k > 1 && GV_MON_SUBS[k - 2][2]) cell.numFmt = '0.0';
+      if (!i) cell.fill = fill('FFFFF2CC');
+    }
+  });
+  kyTen(wm, lineB, nMon);
+
+  const bang = (ten, cot, dong) => {
+    const s = wb.addWorksheet(ten, { views: [{ state: 'frozen', ySplit: 1 }] });
+    s.columns = cot.map(([header, width]) => ({ header, width }));
+    dong.forEach(x => s.addRow(x));
+    s.eachRow((row, rn) => row.eachCell({ includeEmpty: true }, cell => {
+      cell.border = border; cell.font = font({ bold: rn === 1 });
+      if (rn === 1) { cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; cell.fill = headFill; }
+    }));
+    return s;
+  };
+
+  // Sheet 3: danh sách để đối chiếu; không đưa CCCD, BHXH, điện thoại, email ra file thống kê
+  const thuTuVt = g => { const i = GV_NHOM.indexOf(g.vt); return i < 0 ? 9 : i; };
+  const tenRieng = t => t.split(' ').pop();
+  const dsXep = [...gvDs].sort((a, b) => thuTuVt(a) - thuTuVt(b) || a.mon.localeCompare(b.mon, 'vi')
+    || tenRieng(a.ten).localeCompare(tenRieng(b.ten), 'vi') || a.ten.localeCompare(b.ten, 'vi'));
+  const ls = bang('Danh sách', [['STT', 6], ['Họ tên', 28], ['Giới tính', 9], ['Ngày sinh', 12], ['Tuổi', 6], ['Dân tộc', 10],
+    ['Đảng viên', 8], ['Vị trí việc làm', 16], ['Chức vụ', 22], ['Môn dạy', 22], ['Ngạch/hạng', 40], ['Hệ số lương', 8],
+    ['Trình độ chuyên môn', 28], ['Chuyên ngành chính', 26], ['Tiết dạy/tuần', 8], ['Tiết kiêm nhiệm/tuần', 10],
+    ['Đánh giá viên chức', 22], ['GV dạy giỏi', 14]],
+    dsXep.map((g, i) => [i + 1, g.ten, g.gt, g.ns, tuoiGv(g), g.danToc, g.dang ? 'x' : '', g.vt, g.cv, g.mon, g.hang, soGv(g.hsl),
+      g.tdcm, g.cn, soGv(g.tiet), soGv(g.kn), g.dg, g.dayGioi]));
+  ls.autoFilter = { from: 'A1', to: 'R1' };
+
+  // Sheet 4: kiểm tra dữ liệu
+  bang('Kiểm tra dữ liệu', [['STT', 6], ['Họ tên', 28], ['Vị trí việc làm', 16], ['Môn dạy', 22], ['Cần kiểm tra', 70]],
+    canhBao.length ? canhBao.map((x, i) => [i + 1, ...x]) : [['', 'Không có cảnh báo.']]);
+
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const dd = String(d.getDate()).padStart(2, '0'), mm = String(d.getMonth() + 1).padStart(2, '0');
+  a.download = `ThongKeGiaoVien_${dd}_${mm}_CSDLBo.xlsx`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
 
 renderCfg();
 </script>
