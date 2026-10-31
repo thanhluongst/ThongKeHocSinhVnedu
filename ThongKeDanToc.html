@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Thống kê học sinh, giáo viên</title>
+<title>Thống kê HS, GV</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
@@ -64,7 +64,7 @@
   </div>
 
   <div id="paneHs">
-  <h1>Thống kê số lượng học sinh</h1>
+  <h1>Thống kê học sinh</h1>
   <p class="sub">Kéo file danh sách học sinh xuất từ vnEdu vào đây. Bảng thống kê theo mẫu vnEdu: tổng số, nữ, dân tộc (chi tiết từng dân tộc với nam, nữ, tỉ lệ; không tính dân tộc Kinh và người nước ngoài), nữ dân tộc, khuyết tật, diện chính sách. Dữ liệu chỉ xử lý trên máy bạn, không gửi đi đâu.</p>
 
   <div class="card">
@@ -132,7 +132,7 @@
   </div>
 
   <div id="paneGv" class="hidden">
-    <h1>Thống kê chi tiết giáo viên</h1>
+    <h1>Thống kê giáo viên</h1>
     <p class="sub">Kéo file giáo viên đã xuất bằng "Xuất Excel Cấp 2 Mẫu CSDL Bộ" vào đây. Thống kê toàn bộ cán bộ quản lý, giáo viên, nhân viên trong file. Tên trường, năm học lấy từ "Cài đặt báo cáo" ở tab Học sinh. Dữ liệu chỉ xử lý trên máy bạn, không gửi đi đâu.</p>
     <div class="card">
       <div class="drop" id="gvDrop">
@@ -1070,7 +1070,7 @@ $('gvBtn').onclick = async () => {
   // Sheet 1: chỉ tiêu theo vị trí việc làm
   const ws = sheetBaoCao('Thống kê chung');
   ws.columns = [{ width: 52 }, ...Array.from({ length: 9 }, () => ({ width: 9 }))];
-  const lineA = dauTrang(ws, 10, 'THỐNG KÊ CHI TIẾT ĐỘI NGŨ CÁN BỘ, GIÁO VIÊN, NHÂN VIÊN');
+  const lineA = dauTrang(ws, 10, 'THỐNG KÊ ĐỘI NGŨ');
   ws.mergeCells(6, 1, 7, 1); ws.getCell(6, 1).value = 'Chỉ tiêu';
   ws.mergeCells(6, 2, 6, 4); ws.getCell(6, 2).value = 'Toàn trường';
   GV_NHAN.forEach((n, i) => { ws.mergeCells(6, 5 + i * 2, 6, 6 + i * 2); ws.getCell(6, 5 + i * 2).value = n; });
