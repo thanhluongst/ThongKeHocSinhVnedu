@@ -25,7 +25,7 @@ Mục **Cần thông báo bổ sung** trên trang liệt kê người thiếu, s
 
 ## Cách dùng
 
-1. Trên vnEdu, xuất danh sách học sinh toàn trường ra Excel (.xls).
+1. Trên vnEdu, chọn **Quản lý lớp học** → **Nhập xuất** → **Xuất ra Excel học sinh toàn trường** (.xls).
 2. Mở `ThongKeDanToc.html` bằng Chrome hoặc Edge (cần có mạng để tải thư viện đọc/ghi Excel).
 3. Kéo thả file vừa xuất vào trang, xem bảng thống kê, bấm **Xuất Excel**.
 

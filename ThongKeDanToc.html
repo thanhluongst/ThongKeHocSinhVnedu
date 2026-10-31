@@ -71,6 +71,7 @@
   <p class="sub">Kéo file danh sách học sinh xuất từ vnEdu vào đây. Bảng thống kê theo mẫu vnEdu: tổng số, nữ, dân tộc (chi tiết từng dân tộc với nam, nữ, tỉ lệ; không tính dân tộc Kinh và người nước ngoài), nữ dân tộc, khuyết tật, diện chính sách. Dữ liệu chỉ xử lý trên máy bạn, không gửi đi đâu.</p>
 
   <div class="card">
+    <p style="margin:0 0 12px"><b>Cách lấy file đúng mẫu:</b> trên vnEdu, chọn <b>Quản lý lớp học</b> → <b>Nhập xuất</b> → <b>Xuất ra Excel học sinh toàn trường</b>.</p>
     <div class="drop" id="drop">
       <div><b>Chọn file</b> hoặc kéo thả file danh sách học sinh (.xls, .xlsx) vào đây</div>
       <div class="hint" id="fileName">Chưa chọn file</div>
@@ -297,7 +298,8 @@ function parseWorkbook(buf) {
     return list;
   }
   throw new Error('Đây không phải file danh sách học sinh có cột "Dân tộc".\n'
-    + 'Hãy dùng file danh sách học sinh toàn trường xuất từ vnEdu (file có các cột Lớp học, Họ và tên, Giới tính, Dân tộc…), không dùng file báo cáo thống kê.' + cotCuaFile(wb));
+    + 'Hãy dùng file danh sách học sinh toàn trường xuất từ vnEdu (file có các cột Lớp học, Họ và tên, Giới tính, Dân tộc…), không dùng file báo cáo thống kê.\n'
+    + 'Trên vnEdu, chọn Quản lý lớp học → Nhập xuất → Xuất ra Excel học sinh toàn trường.' + cotCuaFile(wb));
 }
 
 // Không đúng loại file: cho biết file đang có những cột nào để người dùng nhận ra
