@@ -17,7 +17,9 @@ Tab **Giáo viên** đọc file xuất bằng "Xuất Excel Cấp 2 Mẫu CSDL B
 - **Thống kê chung**: theo toàn trường, CBQL, giáo viên, nhân viên (SL, nữ): dân tộc, tôn giáo, Đảng, Đoàn, độ tuổi, số năm công tác, hợp đồng, chức vụ, ngạch/hạng, các loại trình độ, bồi dưỡng, đánh giá viên chức, giáo viên giỏi.
 - **Giáo viên theo môn**: số lượng, trình độ, hạng, tiết dạy trung bình, dạy giỏi, đánh giá theo từng môn (chỉ tính vị trí "Giáo viên").
 - **Danh sách**: để đối chiếu, không kèm CCCD, BHXH, điện thoại, email.
-- **Kiểm tra dữ liệu**: người thiếu mã định danh, ngày sinh, CCCD, môn dạy, số tiết…
+- **Cần thông báo bổ sung**: người thiếu hoặc nhập sai thông tin, kèm sẵn nội dung thông báo cho từng người.
+
+Mục **Cần thông báo bổ sung** trên trang liệt kê người thiếu, sai thông tin; lọc theo vị trí hoặc từng mục, sao chép nội dung thông báo cho từng người hoặc cả danh sách, xuất riêng danh sách ra Excel. Ngạch/hạng, hệ số lương, ngày hưởng không kiểm tra với hợp đồng theo nghị định; môn dạy, số tiết chỉ kiểm tra với giáo viên; tin học, ngoại ngữ chỉ kiểm tra với giáo viên và CBQL.
 
 ## Cách dùng
 

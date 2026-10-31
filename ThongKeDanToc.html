@@ -47,6 +47,8 @@
   tr.lv0 td { background: var(--lv0); font-weight: 700; }
   tr.lv1 td { background: var(--lv1); font-weight: 600; }
   tr.cong td { font-weight: 700; }
+  td.wrap { white-space: normal; min-width: 200px; }
+  select { padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); font: inherit; max-width: 100%; }
   td.name { min-width: 200px; }
   details summary { cursor: pointer; font-weight: 600; }
   .hint { color: var(--muted); font-size: 12px; }
@@ -142,7 +144,7 @@
         <input type="file" id="gvFile" accept=".xls,.xlsx" class="hidden">
       </div>
       <div class="row" style="margin-top:14px">
-        <span class="hint">File Excel gồm: Thống kê chung, Giáo viên theo môn, Danh sách (không kèm CCCD, BHXH, điện thoại, email), Kiểm tra dữ liệu.</span>
+        <span class="hint">File Excel gồm: Thống kê chung, Giáo viên theo môn, Danh sách (không kèm CCCD, BHXH, điện thoại, email), Cần thông báo bổ sung.</span>
         <span style="flex:1"></span>
         <button class="primary" id="gvBtn" disabled>Xuất Excel</button>
       </div>
@@ -150,6 +152,19 @@
     <div id="gvResult" class="hidden">
       <div class="stats" id="gvStats"></div>
       <div id="gvWarn" class="warn"></div>
+      <div class="card" style="margin-top:16px">
+        <h2 style="font-size:16px;margin:0 0 4px">Cần thông báo bổ sung</h2>
+        <p class="hint" style="margin:0 0 10px">Những người còn thiếu hoặc nhập sai thông tin. Nội dung sao chép chỉ nêu tên mục, không kèm số CCCD, điện thoại… nên có thể gửi vào nhóm Zalo.</p>
+        <div class="row" style="margin-bottom:10px">
+          <select id="gvLoiVt"><option value="">Tất cả vị trí</option><option>Cán bộ quản lý</option><option>Giáo viên</option><option>Nhân viên</option></select>
+          <select id="gvLoiMuc"></select>
+          <span class="hint" id="gvLoiInfo"></span>
+          <span style="flex:1"></span>
+          <button id="gvLoiCopy">Sao chép thông báo</button>
+          <button id="gvLoiXuat">Xuất danh sách</button>
+        </div>
+        <div class="tablewrap"><table id="gvLoiTbl"></table></div>
+      </div>
       <div class="card tablewrap" style="margin-top:16px"><table id="gvTbl"></table></div>
       <div class="card tablewrap">
         <h2 style="font-size:16px;margin:0 0 8px">Giáo viên theo môn dạy</h2>
@@ -827,6 +842,9 @@ const GV_COT = {
   qlgd: 't.độ quản lý gd', nn: 'khung n.lực n.ngữ', tiengDt: 'gv có chứng chỉ tiếng dân tộc thiểu số', tin: 't.độ tin học',
   cn: 'chuyên ngành chính', tdc: 'trình độ chính', thaySach: 'tham gia bồi dưỡng thay sách', dg: 'đánh giá viên chức',
   dayGioi: 'giáo viên dạy giỏi', cnGioi: 'gv chủ nhiệm giỏi', tptGioi: 'gv tổng phụ trách đội giỏi',
+  ngayTt: 'ngày nhập trạng thái', ngayHuong: 'ngày hưởng', nghe: 'nghề nghiệp khi được tuyển dụng', nnChinh: 'ngoại ngữ chính',
+  tinhTt: 'tỉnh/thành phố (theo địa chỉ thường trú)', xaTt: 'xã/phường (theo địa chỉ thường trú)', thonTt: 'tổ/thôn/xóm (theo địa chỉ thường trú)',
+  tinhQq: 'tỉnh/thành phố (theo quê quán)', xaQq: 'xã/phường (theo quê quán)',
 };
 const GV_NHOM = ['Cán bộ quản lý', 'Giáo viên', 'Nhân viên'];
 const GV_NHAN = ['CBQL', 'Giáo viên', 'Nhân viên'];
@@ -946,32 +964,129 @@ function gvTheoMon(ds) {
   return [dong('Cộng', gv), ...[...mon.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'vi')).map(([m, l]) => dong(m, l))];
 }
 
+// Ngày dd/mm/yyyy có thật và không ở tương lai
+const ngayHopLe = v => {
+  const m = ngaySinhA4(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return false;
+  const d = new Date(+m[3], +m[2] - 1, +m[1]);
+  return d.getMonth() === +m[2] - 1 && d.getDate() === +m[1] && d <= new Date();
+};
+const thuTuVt = g => { const i = GV_NHOM.indexOf(g.vt); return i < 0 ? 9 : i; };
+const tenRieng = t => t.split(' ').pop();
+const xepGv = (a, b) => thuTuVt(a) - thuTuVt(b) || a.mon.localeCompare(b.mon, 'vi')
+  || tenRieng(a.ten).localeCompare(tenRieng(b.ten), 'vi') || a.ten.localeCompare(b.ten, 'vi');
+
+// Trả về những người thiếu hoặc sai thông tin: {g, thieu: [mục], sai: [mục]}
 function kiemTraGv(ds) {
   const out = [];
-  const soLan = f => { const m = new Map(); for (const g of ds) if (g[f]) m.set(g[f], (m.get(g[f]) || 0) + 1); return m; };
-  const soMa = soLan('ma'), soCccd = soLan('cccd');
-  for (const g of ds) {
-    const loi = [];
-    if (!g.ma) loi.push('thiếu mã định danh Bộ'); else if (soMa.get(g.ma) > 1) loi.push('trùng mã định danh Bộ');
-    if (!g.ns) loi.push('thiếu ngày sinh'); else if (!namCua(g.ns)) loi.push('ngày sinh không hợp lệ');
-    else if (tuoiGv(g) < 18 || tuoiGv(g) > 65) loi.push(`tuổi bất thường (${tuoiGv(g)})`);
-    if (!g.cccd) loi.push('thiếu số CCCD'); else if (!/^\d{12}$/.test(g.cccd)) loi.push('số CCCD không đủ 12 số');
-    else if (soCccd.get(g.cccd) > 1) loi.push('trùng số CCCD');
-    if (!g.dthoai) loi.push('thiếu điện thoại');
-    if (!g.email) loi.push('thiếu email');
-    if (!g.bhxh) loi.push('thiếu số sổ BHXH');
-    if (!g.ntd) loi.push('thiếu ngày tuyển dụng'); else if (!namCua(g.ntd)) loi.push('ngày tuyển dụng không hợp lệ');
-    if (!g.vt) loi.push('thiếu vị trí việc làm');
-    if (!g.hang) loi.push('thiếu ngạch/hạng');
-    if (!g.tdcm) loi.push('thiếu trình độ chuyên môn');
-    if (g.vt === 'Giáo viên') {
-      if (!g.mon) loi.push('thiếu môn dạy');
-      if (!soGv(g.tiet)) loi.push('thiếu số tiết dạy');
+  const soLan = f => { const m = new Map(); for (const g of ds) if (g[f]) m.set(key(g[f]), (m.get(key(g[f])) || 0) + 1); return m; };
+  const soMa = soLan('ma'), soCccd = soLan('cccd'), soEmail = soLan('email');
+  for (const g of [...ds].sort(xepGv)) {
+    const thieu = [], sai = [];
+    const can = (v, nhan) => { if (!v) thieu.push(nhan); };
+    const ngay = (v, nhan) => { if (!v) thieu.push(nhan); else if (!ngayHopLe(v)) sai.push(nhan); };
+    can(g.ma, 'Mã định danh Bộ'); ngay(g.ns, 'Ngày sinh'); can(g.gt, 'Giới tính');
+    can(g.cccd, 'Số CCCD'); can(g.dthoai, 'Điện thoại'); can(g.email, 'Email'); can(g.bhxh, 'Số sổ BHXH');
+    can(g.danToc, 'Dân tộc'); can(g.tonGiao, 'Tôn giáo');
+    can(g.tinhTt, 'Tỉnh thường trú'); can(g.xaTt, 'Xã thường trú'); can(g.thonTt, 'Thôn/xóm thường trú');
+    can(g.tinhQq, 'Tỉnh quê quán'); can(g.xaQq, 'Xã quê quán');
+    can(g.vt, 'Vị trí việc làm'); can(g.hd, 'Hình thức hợp đồng'); ngay(g.ntd, 'Ngày tuyển dụng');
+    can(g.tdcm, 'Trình độ chuyên môn'); can(g.tdc, 'Trình độ đào tạo chính'); can(g.cn, 'Chuyên ngành chính');
+    can(g.bdtx, 'Bồi dưỡng thường xuyên'); can(g.dg, 'Đánh giá viên chức');
+    if (key(g.tt) === 'chuyển đến') ngay(g.ngayTt, 'Ngày chuyển đến');
+    // Hợp đồng theo nghị định 68, 111 không xếp ngạch, bậc lương như viên chức
+    if (!/nghị định/i.test(g.hd)) {
+      can(g.hang, 'Ngạch/hạng'); ngay(g.ngayHuong, 'Ngày hưởng lương'); can(soGv(g.hsl), 'Hệ số lương');
     }
-    if (loi.length) out.push([g.ten, g.vt, g.mon, loi.join('; ')]);
+    if (g.vt === 'Giáo viên') { can(g.mon, 'Môn dạy'); can(soGv(g.tiet), 'Số tiết dạy'); }
+    if (g.vt === 'Giáo viên' || g.vt === 'Cán bộ quản lý') { can(g.tin, 'Trình độ tin học'); can(g.nnChinh, 'Ngoại ngữ'); }
+
+    if (g.ma && soMa.get(key(g.ma)) > 1) sai.push('Trùng mã định danh Bộ');
+    if (g.cccd && !/^\d{12}$/.test(g.cccd)) sai.push('Số CCCD không đủ 12 số');
+    if (g.cccd && soCccd.get(key(g.cccd)) > 1) sai.push('Trùng số CCCD');
+    if (g.dthoai && !/^0\d{9}$/.test(g.dthoai.replace(/[\s.-]/g, ''))) sai.push('Điện thoại');
+    if (g.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email)) sai.push('Email');
+    if (g.email && soEmail.get(key(g.email)) > 1) sai.push('Trùng email');
+    if (ngayHopLe(g.ns) && (tuoiGv(g) < 18 || tuoiGv(g) > 65)) sai.push('Tuổi bất thường');
+    if (ngayHopLe(g.ns) && ngayHopLe(g.ntd) && namCua(g.ntd) - namCua(g.ns) < 18) sai.push('Tuyển dụng khi chưa đủ 18 tuổi');
+    if (/^\d+$/.test(g.nghe)) sai.push('Nghề nghiệp khi tuyển dụng ghi số');
+    if (thieu.length || sai.length) out.push({ g, thieu, sai });
   }
   return out;
 }
+const moTaLoi = x => [x.thieu.length ? 'thiếu ' + x.thieu.join(', ') : '', x.sai.length ? 'cần sửa ' + x.sai.join(', ') : ''].filter(Boolean).join('; ');
+const tenCoMon = g => g.mon ? `${g.ten} (${g.mon})` : g.ten;
+const thongBaoGv = x => `Kính gửi thầy/cô ${x.g.ten}: hồ sơ trên CSDL ngành còn ${moTaLoi(x)}. Đề nghị thầy/cô kiểm tra và bổ sung. Xin cảm ơn.`;
+
+function gvLoiDangChon() {
+  const vt = $('gvLoiVt').value, muc = $('gvLoiMuc').value;
+  return gvBao.canhBao.filter(x => (!vt || x.g.vt === vt)
+    && (!muc || x.thieu.map(m => 'T:' + m).concat(x.sai.map(m => 'S:' + m)).includes(muc)));
+}
+function gvLoiRender() {
+  const ds = gvLoiDangChon();
+  $('gvLoiInfo').textContent = `Đang hiện ${ds.length} / ${gvBao.canhBao.length} người`;
+  $('gvLoiTbl').innerHTML = `<thead><tr><th>STT</th><th>Họ tên</th><th>Vị trí</th><th>Môn dạy</th><th>Còn thiếu</th><th>Cần sửa</th><th></th></tr></thead><tbody>`
+    + ds.map((x, i) => `<tr><td class="n">${i + 1}</td><td>${esc(x.g.ten)}</td><td>${esc(x.g.vt)}</td><td>${esc(x.g.mon)}</td>
+      <td class="wrap">${esc(x.thieu.join(', '))}</td><td class="wrap">${esc(x.sai.join(', '))}</td>
+      <td><button data-i="${i}">Sao chép</button></td></tr>`).join('') + '</tbody>';
+  $('gvLoiTbl').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const x = ds[+b.dataset.i];
+    saoChep(thongBaoGv(x), b);
+  });
+  $('gvLoiCopy').disabled = $('gvLoiXuat').disabled = !ds.length;
+}
+function gvLoiBoLoc() {
+  const dem = new Map();
+  for (const x of gvBao.canhBao) for (const [loai, ds] of [['T', x.thieu], ['S', x.sai]]) for (const m of ds) dem.set(loai + ':' + m, (dem.get(loai + ':' + m) || 0) + 1);
+  const mon = [...dem.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'vi'));
+  $('gvLoiMuc').innerHTML = '<option value="">Tất cả các mục</option>' + mon.map(([k, n]) =>
+    `<option value="${esc(k)}">${k[0] === 'T' ? 'Thiếu' : 'Cần sửa'}: ${esc(k.slice(2))} (${n})</option>`).join('');
+  $('gvLoiVt').value = '';
+}
+async function saoChep(text, nut) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const t = document.createElement('textarea');
+    t.value = text; document.body.appendChild(t); t.select();
+    document.execCommand('copy'); t.remove();
+  }
+  const cu = nut.textContent;
+  nut.textContent = 'Đã sao chép';
+  setTimeout(() => nut.textContent = cu, 1500);
+}
+$('gvLoiVt').onchange = $('gvLoiMuc').onchange = gvLoiRender;
+$('gvLoiCopy').onclick = e => {
+  const ds = gvLoiDangChon();
+  saoChep('Đề nghị các thầy cô có tên dưới đây kiểm tra, bổ sung hồ sơ trên CSDL ngành:\n'
+    + ds.map((x, i) => `${i + 1}. ${tenCoMon(x.g)}: ${moTaLoi(x)}`).join('\n'), e.target);
+};
+function gvBang(wb, ten, cot, dong) {
+  const thin = { style: 'thin' }, border = { top: thin, left: thin, bottom: thin, right: thin };
+  const s = wb.addWorksheet(ten, { views: [{ state: 'frozen', ySplit: 1 }], pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+  s.columns = cot.map(([header, width]) => ({ header, width }));
+  dong.forEach(x => s.addRow(x));
+  s.eachRow((row, rn) => row.eachCell({ includeEmpty: true }, cell => {
+    cell.border = border; cell.font = { name: 'Times New Roman', size: 12, bold: rn === 1 };
+    cell.alignment = rn === 1 ? { horizontal: 'center', vertical: 'middle', wrapText: true } : { vertical: 'middle', wrapText: true };
+    if (rn === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } };
+  }));
+  return s;
+}
+const GV_LOI_SHEET = 'Cần thông báo bổ sung';
+const GV_LOI_COT = [['STT', 6], ['Họ tên', 28], ['Vị trí việc làm', 16], ['Môn dạy', 22], ['Còn thiếu', 50], ['Cần sửa', 30], ['Nội dung thông báo', 70]];
+const gvLoiDong = ds => ds.map((x, i) => [i + 1, x.g.ten, x.g.vt, x.g.mon, x.thieu.join(', '), x.sai.join(', '), thongBaoGv(x)]);
+$('gvLoiXuat').onclick = async () => {
+  const wb = new ExcelJS.Workbook();
+  gvBang(wb, GV_LOI_SHEET, GV_LOI_COT, gvLoiDong(gvLoiDangChon()));
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const d = new Date();
+  a.download = `GiaoVienCanBoSung_${String(d.getDate()).padStart(2, '0')}_${String(d.getMonth() + 1).padStart(2, '0')}.xlsx`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
 
 function gvBuild() {
   gvBao = { sections: gvSections(gvDs), tong: gvDong('Tổng số', gvDs), mon: gvTheoMon(gvDs), canhBao: kiemTraGv(gvDs) };
@@ -985,7 +1100,9 @@ function gvBuild() {
     ['Tuổi TB giáo viên', fmtPct(tuoi)],
   ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
   const lech = gvDs.filter(g => !['đang làm việc', 'chuyển đến'].includes(key(g.tt))).length;
-  $('gvWarn').textContent = [canhBao.length ? `Có ${canhBao.length} người cần kiểm tra dữ liệu (xem sheet "Kiểm tra dữ liệu" khi xuất Excel).` : '',
+  gvLoiBoLoc();
+  gvLoiRender();
+  $('gvWarn').textContent = [canhBao.length ? `Có ${canhBao.length} người thiếu hoặc sai thông tin, xem mục "Cần thông báo bổ sung" bên dưới.` : '',
     lech ? `Có ${lech} người không ở trạng thái "Đang làm việc" hoặc "Chuyển đến" nhưng vẫn được tính, xem mục Trạng thái.` : ''].filter(Boolean).join(' ');
 
   const o = c => `<td class="n">${c.sl || ''}</td><td class="n">${c.nu || ''}</td>`;
@@ -1125,23 +1242,9 @@ $('gvBtn').onclick = async () => {
   });
   kyTen(wm, lineB, nMon);
 
-  const bang = (ten, cot, dong) => {
-    const s = wb.addWorksheet(ten, { views: [{ state: 'frozen', ySplit: 1 }] });
-    s.columns = cot.map(([header, width]) => ({ header, width }));
-    dong.forEach(x => s.addRow(x));
-    s.eachRow((row, rn) => row.eachCell({ includeEmpty: true }, cell => {
-      cell.border = border; cell.font = font({ bold: rn === 1 });
-      if (rn === 1) { cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; cell.fill = headFill; }
-    }));
-    return s;
-  };
-
   // Sheet 3: danh sách để đối chiếu; không đưa CCCD, BHXH, điện thoại, email ra file thống kê
-  const thuTuVt = g => { const i = GV_NHOM.indexOf(g.vt); return i < 0 ? 9 : i; };
-  const tenRieng = t => t.split(' ').pop();
-  const dsXep = [...gvDs].sort((a, b) => thuTuVt(a) - thuTuVt(b) || a.mon.localeCompare(b.mon, 'vi')
-    || tenRieng(a.ten).localeCompare(tenRieng(b.ten), 'vi') || a.ten.localeCompare(b.ten, 'vi'));
-  const ls = bang('Danh sách', [['STT', 6], ['Họ tên', 28], ['Giới tính', 9], ['Ngày sinh', 12], ['Tuổi', 6], ['Dân tộc', 10],
+  const dsXep = [...gvDs].sort(xepGv);
+  const ls = gvBang(wb, 'Danh sách', [['STT', 6], ['Họ tên', 28], ['Giới tính', 9], ['Ngày sinh', 12], ['Tuổi', 6], ['Dân tộc', 10],
     ['Đảng viên', 8], ['Vị trí việc làm', 16], ['Chức vụ', 22], ['Môn dạy', 22], ['Ngạch/hạng', 40], ['Hệ số lương', 8],
     ['Trình độ chuyên môn', 28], ['Chuyên ngành chính', 26], ['Tiết dạy/tuần', 8], ['Tiết kiêm nhiệm/tuần', 10],
     ['Đánh giá viên chức', 22], ['GV dạy giỏi', 14]],
@@ -1149,9 +1252,8 @@ $('gvBtn').onclick = async () => {
       g.tdcm, g.cn, soGv(g.tiet), soGv(g.kn), g.dg, g.dayGioi]));
   ls.autoFilter = { from: 'A1', to: 'R1' };
 
-  // Sheet 4: kiểm tra dữ liệu
-  bang('Kiểm tra dữ liệu', [['STT', 6], ['Họ tên', 28], ['Vị trí việc làm', 16], ['Môn dạy', 22], ['Cần kiểm tra', 70]],
-    canhBao.length ? canhBao.map((x, i) => [i + 1, ...x]) : [['', 'Không có cảnh báo.']]);
+  // Sheet 4: những người cần thông báo bổ sung
+  gvBang(wb, GV_LOI_SHEET, GV_LOI_COT, canhBao.length ? gvLoiDong(canhBao) : [['', 'Không có ai cần bổ sung.']]);
 
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement('a');
